@@ -8,20 +8,31 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
-
   <div class="container">
     <h1>Controle de Estoque</h1>
 
+    <!-- Botões de controle do scanner -->
+    <div class="scanner-buttons">
+      <button onclick="iniciarLeitor()">Iniciar Leitura</button>
+      <button onclick="pararLeitor()">Parar Leitura</button>
+    </div>
+
+    <!-- Área de leitura do QR Code -->
     <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
     <p id="qr-result">Aguardando leitura...</p>
 
+    <!-- TextBox com leitura automática -->
+    <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly>
+
+    <!-- Entrada manual -->
     <input type="text" id="manual-input" placeholder="Código manual (opcional)">
-    
+
+    <!-- Botões de ação -->
     <div class="buttons">
       <button onclick="registrarMovimentacao('entrada')">Registrar Entrada</button>
       <button onclick="registrarMovimentacao('saida')">Registrar Saída</button>
     </div>
-    
+
     <p id="status-msg"></p>
   </div>
 
