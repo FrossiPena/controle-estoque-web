@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controle de Estoque</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Controle de Estoque</h1>
+
+    <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+    <p id="qr-result">Aguardando leitura...</p>
+
+    <input type="text" id="manual-input" placeholder="Código manual (opcional)">
+    
+    <div class="buttons">
+      <button onclick="registrarMovimentacao('entrada')">Registrar Entrada</button>
+      <button onclick="registrarMovimentacao('saida')">Registrar Saída</button>
+    </div>
+    
+    <p id="status-msg"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
