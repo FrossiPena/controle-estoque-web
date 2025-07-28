@@ -1,32 +1,52 @@
+let html5QrCode;
+let scannerAtivo = false;
 let lastScannedCode = "";
 
-// Inicializa o leitor de QR Code
-function startScanner() {
-  const qrRegion = document.getElementById("qr-reader");
+// Função para iniciar a leitura
+function iniciarLeitor() {
+  if (scannerAtivo) return;
 
-  const html5QrCode = new Html5Qrcode("qr-reader");
+  const qrRegion = document.getElementById("qr-reader");
+  html5QrCode = new Html5Qrcode("qr-reader");
 
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
   html5QrCode.start(
-    { facingMode: "environment" }, // câmera traseira
+    { facingMode: "environment" },
     config,
     qrCodeMessage => {
       lastScannedCode = qrCodeMessage;
       document.getElementById("qr-result").innerText = `QR lido: ${qrCodeMessage}`;
+      document.getElementById("codigo-lido").value = qrCodeMessage;
     },
     error => {
-      // silenciosamente ignora erros de leitura
+      // Ignora erros silenciosamente
     }
-  ).catch(err => {
-    document.getElementById("qr-result").innerText = `Erro ao acessar câmera: ${err}`;
+  ).then(() => {
+    scannerAtivo = true;
+  }).catch(err => {
+    document.getElementById("qr-result").innerText = `Erro ao iniciar câmera: ${err}`;
+  });
+}
+
+// Função para parar a leitura
+function pararLeitor() {
+  if (!scannerAtivo || !html5QrCode) return;
+
+  html5QrCode.stop().then(() => {
+    html5QrCode.clear();
+    scannerAtivo = false;
+    document.getElementById("qr-result").innerText = "Leitura pausada.";
+  }).catch(err => {
+    document.getElementById("qr-result").innerText = `Erro ao parar câmera: ${err}`;
   });
 }
 
 // Registrar entrada ou saída
 function registrarMovimentacao(tipo) {
+  const codigoLido = document.getElementById("codigo-lido").value.trim();
   const manualInput = document.getElementById("manual-input").value.trim();
-  const codigo = manualInput || lastScannedCode;
+  const codigo = manualInput || codigoLido;
 
   if (!codigo) {
     alert("Nenhum código informado ou lido.");
@@ -39,7 +59,7 @@ function registrarMovimentacao(tipo) {
     timestamp: new Date().toISOString()
   };
 
-  // Aqui você conecta com o backend (Apps Script ou API)
+  // Substitua com seu endpoint real
   fetch("https://script.google.com/macros/s/SEU_ENDPOINT_AQUI/exec", {
     method: "POST",
     body: JSON.stringify(data),
@@ -49,15 +69,11 @@ function registrarMovimentacao(tipo) {
   .then(result => {
     document.getElementById("status-msg").innerText = `✅ ${tipo} registrada com sucesso`;
     document.getElementById("manual-input").value = "";
-    lastScannedCode = "";
+    document.getElementById("codigo-lido").value = "";
     document.getElementById("qr-result").innerText = "Aguardando leitura...";
+    lastScannedCode = "";
   })
   .catch(error => {
     document.getElementById("status-msg").innerText = `❌ Erro ao registrar: ${error}`;
   });
 }
-
-// Iniciar scanner assim que a página carregar
-window.onload = () => {
-  startScanner();
-};
