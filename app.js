@@ -59,7 +59,7 @@ function registrarMovimentacao(tipo) {
     timestamp: new Date().toISOString()
   };
 
-  // Substitua com seu endpoint real
+  // Substitua com seu endpoint real do Google Apps Script
   fetch("https://script.google.com/macros/s/SEU_ENDPOINT_AQUI/exec", {
     method: "POST",
     body: JSON.stringify(data),
