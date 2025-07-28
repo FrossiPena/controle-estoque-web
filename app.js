@@ -18,7 +18,9 @@ function iniciarLeitor() {
       document.getElementById("qr-result").innerText = `QR lido: ${qrCodeMessage}`;
       document.getElementById("codigo-lido").value = qrCodeMessage;
 
-      const partes = qrCodeMessage.split("|");
+      // ✅ Corrige strings com separador final "|"
+      const partes = qrCodeMessage.split("|").filter(Boolean);
+
       if (partes.length === 4) {
         document.getElementById("campo1").value = partes[0];
         document.getElementById("campo2").value = partes[1];
@@ -29,10 +31,11 @@ function iniciarLeitor() {
         document.getElementById("campo2").value = "";
         document.getElementById("campo3").value = "";
         document.getElementById("campo4").value = "";
+        document.getElementById("status-msg").innerText = "❌ QR inválido: formato incorreto";
       }
     },
     error => {
-      // silencioso
+      // Ignora erros silenciosamente
     }
   ).then(() => {
     scannerAtivo = true;
