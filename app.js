@@ -2,11 +2,10 @@ let html5QrCode;
 let scannerAtivo = false;
 let lastScannedCode = "";
 
-// Função para iniciar a leitura
+// Inicia a leitura
 function iniciarLeitor() {
   if (scannerAtivo) return;
 
-  const qrRegion = document.getElementById("qr-reader");
   html5QrCode = new Html5Qrcode("qr-reader");
 
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
@@ -18,9 +17,22 @@ function iniciarLeitor() {
       lastScannedCode = qrCodeMessage;
       document.getElementById("qr-result").innerText = `QR lido: ${qrCodeMessage}`;
       document.getElementById("codigo-lido").value = qrCodeMessage;
+
+      const partes = qrCodeMessage.split("|");
+      if (partes.length === 4) {
+        document.getElementById("campo1").value = partes[0];
+        document.getElementById("campo2").value = partes[1];
+        document.getElementById("campo3").value = partes[2];
+        document.getElementById("campo4").value = partes[3];
+      } else {
+        document.getElementById("campo1").value = "";
+        document.getElementById("campo2").value = "";
+        document.getElementById("campo3").value = "";
+        document.getElementById("campo4").value = "";
+      }
     },
     error => {
-      // Ignora erros silenciosamente
+      // silencioso
     }
   ).then(() => {
     scannerAtivo = true;
@@ -29,7 +41,7 @@ function iniciarLeitor() {
   });
 }
 
-// Função para parar a leitura
+// Para a leitura
 function pararLeitor() {
   if (!scannerAtivo || !html5QrCode) return;
 
@@ -42,7 +54,7 @@ function pararLeitor() {
   });
 }
 
-// Registrar entrada ou saída
+// Envia a movimentação
 function registrarMovimentacao(tipo) {
   const codigoLido = document.getElementById("codigo-lido").value.trim();
   const manualInput = document.getElementById("manual-input").value.trim();
@@ -59,7 +71,6 @@ function registrarMovimentacao(tipo) {
     timestamp: new Date().toISOString()
   };
 
-  // Substitua com seu endpoint real do Google Apps Script
   fetch("https://script.google.com/macros/s/SEU_ENDPOINT_AQUI/exec", {
     method: "POST",
     body: JSON.stringify(data),
@@ -72,6 +83,12 @@ function registrarMovimentacao(tipo) {
     document.getElementById("codigo-lido").value = "";
     document.getElementById("qr-result").innerText = "Aguardando leitura...";
     lastScannedCode = "";
+
+    // Limpa os campos separados
+    document.getElementById("campo1").value = "";
+    document.getElementById("campo2").value = "";
+    document.getElementById("campo3").value = "";
+    document.getElementById("campo4").value = "";
   })
   .catch(error => {
     document.getElementById("status-msg").innerText = `❌ Erro ao registrar: ${error}`;
