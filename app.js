@@ -26,18 +26,18 @@ function iniciarLeitor() {
         document.getElementById("campo3").value = partes[2];
         document.getElementById("campo4").value = partes[3];
 
-        // 🔎 Busca no Google Sheets o valor da coluna I com base no campo2
+        // Consulta campo2 no Google Sheets
         fetch(`https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec?codigo=${partes[1]}`)
           .then(res => res.json())
           .then(dado => {
             if (dado && dado.resultado) {
-              document.getElementById("status-msg").innerText = `✅ Referência encontrada: ${dado.resultado}`;
+              document.getElementById("resultado-google").value = dado.resultado;
             } else {
-              document.getElementById("status-msg").innerText = "⚠️ Código não encontrado na planilha.";
+              document.getElementById("resultado-google").value = "Não encontrado";
             }
           })
           .catch(() => {
-            document.getElementById("status-msg").innerText = "❌ Erro ao acessar planilha.";
+            document.getElementById("resultado-google").value = "Erro na consulta";
           });
 
       } else {
@@ -45,11 +45,12 @@ function iniciarLeitor() {
         document.getElementById("campo2").value = "";
         document.getElementById("campo3").value = "";
         document.getElementById("campo4").value = "";
+        document.getElementById("resultado-google").value = "";
         document.getElementById("status-msg").innerText = "❌ QR inválido: formato incorreto";
       }
     },
     error => {
-      // Silencioso
+      // silencioso
     }
   ).then(() => {
     scannerAtivo = true;
@@ -105,6 +106,7 @@ function registrarMovimentacao(tipo) {
     document.getElementById("campo2").value = "";
     document.getElementById("campo3").value = "";
     document.getElementById("campo4").value = "";
+    document.getElementById("resultado-google").value = "";
   })
   .catch(error => {
     document.getElementById("status-msg").innerText = `❌ Erro ao registrar: ${error}`;
