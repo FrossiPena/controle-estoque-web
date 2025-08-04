@@ -18,7 +18,6 @@ function iniciarLeitor() {
       document.getElementById("qr-result").innerText = `QR lido: ${qrCodeMessage}`;
       document.getElementById("codigo-lido").value = qrCodeMessage;
 
-      // ✅ Corrige strings com separador final "|"
       const partes = qrCodeMessage.split("|").filter(Boolean);
 
       if (partes.length === 4) {
@@ -26,6 +25,21 @@ function iniciarLeitor() {
         document.getElementById("campo2").value = partes[1];
         document.getElementById("campo3").value = partes[2];
         document.getElementById("campo4").value = partes[3];
+
+        // 🔎 Busca no Google Sheets o valor da coluna I com base no campo2
+        fetch(`https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec?codigo=${partes[1]}`)
+          .then(res => res.json())
+          .then(dado => {
+            if (dado && dado.resultado) {
+              document.getElementById("status-msg").innerText = `✅ Referência encontrada: ${dado.resultado}`;
+            } else {
+              document.getElementById("status-msg").innerText = "⚠️ Código não encontrado na planilha.";
+            }
+          })
+          .catch(() => {
+            document.getElementById("status-msg").innerText = "❌ Erro ao acessar planilha.";
+          });
+
       } else {
         document.getElementById("campo1").value = "";
         document.getElementById("campo2").value = "";
@@ -35,7 +49,7 @@ function iniciarLeitor() {
       }
     },
     error => {
-      // Ignora erros silenciosamente
+      // Silencioso
     }
   ).then(() => {
     scannerAtivo = true;
@@ -74,7 +88,7 @@ function registrarMovimentacao(tipo) {
     timestamp: new Date().toISOString()
   };
 
-  fetch("https://script.google.com/macros/s/SEU_ENDPOINT_AQUI/exec", {
+  fetch("https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec", {
     method: "POST",
     body: JSON.stringify(data),
     headers: { "Content-Type": "application/json" }
@@ -87,7 +101,6 @@ function registrarMovimentacao(tipo) {
     document.getElementById("qr-result").innerText = "Aguardando leitura...";
     lastScannedCode = "";
 
-    // Limpa os campos separados
     document.getElementById("campo1").value = "";
     document.getElementById("campo2").value = "";
     document.getElementById("campo3").value = "";
