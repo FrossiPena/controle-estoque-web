@@ -5,6 +5,10 @@ body {
   background: #f9f9f9;
   color: #333;
 }
+.debug-wrap { margin-top: 16px; text-align: left; }
+#debug-log { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+.debug-actions { display: flex; gap: 8px; margin-top: 6px; }
+
 
 .container {
   max-width: 480px;
@@ -52,3 +56,4 @@ button:hover {
   font-weight: bold;
   color: green;
 }
+
