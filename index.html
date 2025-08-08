@@ -30,9 +30,10 @@
       <input type="text" id="campo2" placeholder="Campo 2" readonly>
       <input type="text" id="campo3" placeholder="Campo 3" readonly>
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
-      <!-- Resultado da busca no Google Sheets -->
-<input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
     </div>
+
+    <!-- Resultado da busca no Google Sheets -->
+    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
 
     <!-- Entrada manual -->
     <input type="text" id="manual-input" placeholder="Código manual (opcional)">
@@ -44,9 +45,20 @@
     </div>
 
     <p id="status-msg"></p>
+
+    <!-- Área de Debug -->
+    <div class="debug-wrap">
+      <label for="debug-log">Debug</label>
+      <textarea id="debug-log" rows="10" readonly placeholder="Logs aparecerão aqui..."></textarea>
+      <div class="debug-actions">
+        <button type="button" onclick="limparDebug()">Limpar Log</button>
+        <button type="button" onclick="copiarDebug()">Copiar Log</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
+
 
