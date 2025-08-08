@@ -70,7 +70,7 @@ function iniciarLeitor() {
 
         // Consulta campo2 no Google Sheets
         const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
-        const url = `${endpoint}?codigo=${encodeURIComponent(partes[1])}`;
+        const url = `${endpoint}?codigo=${encodeURIComponent(partes[0])}`;
         logDebug("Consultando Google Sheets (GET):", url);
 
         fetch(url)
@@ -198,3 +198,4 @@ function registrarMovimentacao(tipo) {
     logDebug("Erro no POST de registro:", error);
   });
 }
+
