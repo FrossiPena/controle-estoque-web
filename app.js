@@ -70,7 +70,8 @@ function processarQRCode(qrCodeMessage) {
     const parte0 = partes[0];
     const parte1Limpo = partes[1].replace(/^0+/, ""); // remove zeros à esquerda
     logDebug(`Parte[1] limpa: ${parte1Limpo}`);
-
+    partes[1].value = parte1Limpo
+    
     buscarGruasAplicaveis(parte0);
     buscarCorrespondenciaExata(parte0, parte1Limpo);
   }
@@ -139,3 +140,4 @@ function registrarMovimentacao(tipo) {
   logDebug(`Registrando ${tipo} para o código: ${codigo}`);
   // Aqui entraria a lógica POST para registrar no Google Sheets ou backend
 }
+
