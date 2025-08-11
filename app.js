@@ -1,4 +1,6 @@
-// v1.6 - Loga o texto final de 'Gruas aplicáveis', força cache-busting e reforça o set do campo
+// v2.0 - Adiciona consulta 'Descrição Português' (mode=desc_pt); mantém auto-stop e debounce; loga versão carregada
+
+const APP_VERSION = "v2.0";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -11,6 +13,7 @@ function logDebug(msg) {
   const ts = new Date().toLocaleTimeString();
   if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
+logDebug(`Carregado app.js versão ${APP_VERSION}`);
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
@@ -105,9 +108,12 @@ function processarQRCode(qrCodeMessage) {
   const elI = document.getElementById("resultado-google");
   const elGruas = document.getElementById("gruas-aplicaveis");
   const elExata = document.getElementById("correspondencia-exata");
+  const elDescPT = document.getElementById("descricao-pt");
+
   if (elI) elI.value = "";
   if (elGruas) elGruas.value = "";
   if (elExata) elExata.value = "";
+  if (elDescPT) elDescPT.value = "";
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
@@ -141,20 +147,9 @@ function processarQRCode(qrCodeMessage) {
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
 
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
-
-      // seta imediatamente
       if (elGruas) elGruas.value = texto;
       logDebug("Gruas aplicáveis (texto final): " + texto);
-
-      // re-seta após um pequeno delay (evita alguma condição de corrida rara)
-      setTimeout(()=>{
-        const el2 = document.getElementById("gruas-aplicaveis");
-        if (el2 && el2.value !== texto) {
-          el2.value = texto;
-          logDebug("Gruas aplicáveis reescrito após delay.");
-        }
-      }, 50);
-
+      setTimeout(()=>{ const el2=document.getElementById("gruas-aplicaveis"); if(el2&&el2.value!==texto){ el2.value=texto; logDebug("Gruas reescrito após delay.");}}, 50);
     } else {
       if (elGruas) elGruas.value = "Não encontrado";
       logDebug("Gruas: resposta inválida/sem ok");
@@ -175,4 +170,29 @@ function processarQRCode(qrCodeMessage) {
       logDebug("Exata: resposta inválida/sem ok");
     }
   }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata:", err); });
+
+  // (D) NOVO: Descrição Português (H -> L[0..15] -> lookup em 'RELAÇÃO DE PRODUTOS - COM PREÇO PADRÃO'[H] => B)
+  const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
+  logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
+  fetch(urlDescPT).then(r=>r.text()).then(raw=>{
+    logDebug("Resposta Descrição PT raw: " + raw);
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (j && j.ok) {
+      const valor = (j.descricao || "").trim();
+      if (elDescPT) elDescPT.value = valor || "Não encontrado";
+      logDebug("Descrição PT preenchida:", valor || "Não encontrado");
+    } else {
+      if (elDescPT) elDescPT.value = "Não encontrado";
+      logDebug("Descrição PT: resposta inválida/sem ok");
+    }
+  }).catch(err=>{ if (elDescPT) elDescPT.value="Erro na consulta"; logDebug("Erro Descrição PT:", err); });
+}
+
+function registrarMovimentacao(tipo) {
+  const manual = document.getElementById("manual-input").value.trim();
+  const lido = document.getElementById("codigo-lido").value.trim();
+  const codigo = manual || lido;
+  if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
+  logDebug(`Registrando ${tipo}: ${codigo}`);
+  // POST (quando ativar)
 }
