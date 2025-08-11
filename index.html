@@ -12,20 +12,16 @@
   <div class="container">
     <h1>Controle de Estoque</h1>
 
-    <!-- Botões de controle do scanner -->
     <div class="scanner-buttons">
       <button onclick="iniciarLeitor()">Iniciar Leitura</button>
       <button onclick="pararLeitor()">Parar Leitura</button>
     </div>
 
-    <!-- Área de leitura do QR Code -->
     <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
     <p id="qr-result">Aguardando leitura...</p>
 
-    <!-- TextBox com leitura automática -->
     <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly>
 
-    <!-- Novos campos separados -->
     <div class="parsed-fields">
       <input type="text" id="campo1" placeholder="Campo 1" readonly>
       <input type="text" id="campo2" placeholder="Campo 2" readonly>
@@ -33,22 +29,17 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
     </div>
 
-    <!-- Resultado da busca no Google Sheets (H -> I) -->
+    <!-- H -> I -->
     <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
 
-    <!-- NOVO: Descrição Português (via MachineCards[L] -> 16 chars -> relação de produtos[H] => B) -->
+    <!-- NOVO: descrição em PT -->
     <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly>
 
-    <!-- Correspondência exata -->
     <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly>
-
-    <!-- Gruas aplicáveis (multilinhas) -->
     <textarea id="gruas-aplicaveis" rows="4" placeholder="Gruas aplicáveis" readonly></textarea>
 
-    <!-- Entrada manual -->
     <input type="text" id="manual-input" placeholder="Código manual (opcional)">
 
-    <!-- Botões de ação -->
     <div class="buttons">
       <button onclick="registrarMovimentacao('entrada')">Registrar Entrada</button>
       <button onclick="registrarMovimentacao('saida')">Registrar Saída</button>
@@ -56,7 +47,6 @@
 
     <p id="status-msg"></p>
 
-    <!-- Área de Debug -->
     <div class="debug-wrap">
       <label for="debug-log">Debug</label>
       <textarea id="debug-log" rows="10" readonly placeholder="Logs aparecerão aqui..."></textarea>
