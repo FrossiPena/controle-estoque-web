@@ -1,6 +1,6 @@
-// v2.0 - Declara versão no log + adiciona consulta 'Descrição Português' (mode=desc_pt) a planilha separada
+// v2.1 - Debug reforçado da consulta 'Descrição Português' (URL, raw, JSON, key16, sheet, row)
 
-const APP_VERSION = "v2.0";
+const APP_VERSION = "v2.1";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -169,12 +169,15 @@ function processarQRCode(qrCodeMessage) {
     }
   }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata:", err); });
 
-  // (D) NOVO: Descrição Português (MachineCards[L]->16 chars -> Relação[H] => B)
+  // (D) Descrição Português
   const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (j) {
+      logDebug(`DescPT JSON ok:${!!j.ok} key16:${j.key16||""} sheet:${j.sheet||""} row:${j.row||""} descricao:${(j.descricao||"").substring(0,60)}`);
+    }
     if (j && j.ok) {
       const valor = (j.descricao || "").trim();
       if (elDescPT) elDescPT.value = valor || "Não encontrado";
@@ -183,7 +186,10 @@ function processarQRCode(qrCodeMessage) {
       if (elDescPT) elDescPT.value = "Não encontrado";
       logDebug("Descrição PT: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elDescPT) elDescPT.value="Erro na consulta"; logDebug("Erro Descrição PT:", err); });
+  }).catch(err=>{
+    if (elDescPT) elDescPT.value="Erro na consulta";
+    logDebug("Erro Descrição PT:", err);
+  });
 }
 
 function registrarMovimentacao(tipo) {
@@ -192,5 +198,4 @@ function registrarMovimentacao(tipo) {
   const codigo = manual || lido;
   if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
   logDebug(`Registrando ${tipo}: ${codigo}`);
-  // POST (quando ativar)
 }
