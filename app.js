@@ -1,26 +1,23 @@
-// v1.1 - Prioriza câmera traseira: tenta facingMode 'environment'; fallback escolhe câmera 'back/rear/traseira'
+// v1.2 - Prioriza câmera traseira + restaura preenchimento de #resultado-google (H->I via mode=i_por_h) + mantém Gruas (H->C) e Exata (H&K->M)
 
 let html5QrCode;
 let scannerRunning = false;
 
 function logDebug(msg) {
-  const log = document.getElementById("debug-log");
-  const now = new Date().toLocaleTimeString();
-  if (log) {
-    log.value += `[${now}] ${msg}\n`;
-    log.scrollTop = log.scrollHeight;
-  }
+  const el = document.getElementById("debug-log");
+  const ts = new Date().toLocaleTimeString();
+  if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
 
 function limparDebug() {
-  const log = document.getElementById("debug-log");
-  if (log) log.value = "";
+  const el = document.getElementById("debug-log");
+  if (el) el.value = "";
 }
 
 function copiarDebug() {
-  const log = document.getElementById("debug-log");
-  if (!log) return;
-  log.select();
+  const el = document.getElementById("debug-log");
+  if (!el) return;
+  el.select();
   document.execCommand("copy");
 }
 
@@ -31,7 +28,7 @@ function iniciarLeitor() {
 
   const config = { fps: 10, qrbox: 250 };
 
-  // 1) Tenta usar facingMode 'environment' (traseira) — melhor para iOS/Safari
+  // Tenta câmera traseira por facingMode
   html5QrCode.start(
     { facingMode: { exact: "environment" } },
     config,
@@ -40,24 +37,13 @@ function iniciarLeitor() {
     scannerRunning = true;
     logDebug("Leitor iniciado com facingMode=environment.");
   }).catch(async (err) => {
-    logDebug("Falhou facingMode=environment, tentando listar câmeras... " + err);
-
+    logDebug("Falhou facingMode=environment, listando câmeras... " + err);
     try {
       const cameras = await Html5Qrcode.getCameras();
-      if (!cameras || !cameras.length) {
-        logDebug("Nenhuma câmera encontrada.");
-        return;
-      }
-
-      // 2) Procura explicitamente por 'back', 'rear', 'traseira', 'environment' no label
-      const preferidas = cameras.filter(c =>
-        /back|rear|traseira|environment/i.test(c.label || "")
-      );
-
-      // Se não achar por nome, tenta a última (muitos devices listam traseira por último)
-      const escolhida = (preferidas[0] || cameras[cameras.length - 1]);
+      if (!cameras || !cameras.length) { logDebug("Nenhuma câmera encontrada."); return; }
+      const preferidas = cameras.filter(c => /back|rear|traseira|environment/i.test(c.label || ""));
+      const escolhida = preferidas[0] || cameras[cameras.length - 1];
       logDebug("Câmera escolhida: " + (escolhida.label || escolhida.id));
-
       html5QrCode.start(
         escolhida.id,
         config,
@@ -65,10 +51,7 @@ function iniciarLeitor() {
       ).then(() => {
         scannerRunning = true;
         logDebug("Leitor iniciado com cameraId selecionada.");
-      }).catch(e2 => {
-        logDebug("Erro ao iniciar com cameraId: " + e2);
-      });
-
+      }).catch(e2 => logDebug("Erro ao iniciar com cameraId: " + e2));
     } catch (e) {
       logDebug("Erro ao obter lista de câmeras: " + e);
     }
@@ -101,89 +84,88 @@ function processarQRCode(qrCodeMessage) {
   const parte1Original = String(partes[1]).trim();
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
+  partes[1] = parte1Limpo; // sobrescreve para evitar confusão
 
+  // Preenche UI
   document.getElementById("codigo-lido").value = qrCodeMessage;
   document.getElementById("campo1").value = parte0;
-  document.getElementById("campo2").value = parte1Limpo; // mostra já limpo
+  document.getElementById("campo2").value = parte1Limpo;
   document.getElementById("campo3").value = partes[2];
   document.getElementById("campo4").value = partes[3];
 
-  // Atualiza o array (evita usar valor antigo por engano)
-  partes[1] = parte1Limpo;
+  // Limpa resultados antes de buscar
+  const elI = document.getElementById("resultado-google");
+  const elGruas = document.getElementById("gruas-aplicaveis");
+  const elExata = document.getElementById("correspondencia-exata");
+  if (elI) elI.value = "";
+  if (elGruas) elGruas.value = "";
+  if (elExata) elExata.value = "";
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
-  // Limpa campos de resultado antes de buscar
-  const gruasEl = document.getElementById("gruas-aplicaveis");
-  const exataEl = document.getElementById("correspondencia-exata");
-  if (gruasEl) gruasEl.value = "";
-  if (exataEl) exataEl.value = "";
-
-  buscarGruasAplicaveis(parte0);
-  buscarCorrespondenciaExata(parte0, parte1Limpo);
-}
-
-function buscarGruasAplicaveis(parte0) {
+  // End-point único
   const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
-  const url = `${endpoint}?mode=gruas&h=${encodeURIComponent(parte0)}`;
-  logDebug("GET Gruas aplicáveis: " + url);
 
-  fetch(url)
-    .then(resp => resp.text())
-    .then(text => {
-      logDebug("Resposta Gruas (raw): " + text);
-      try {
-        const json = JSON.parse(text);
-        if (json.ok) {
-          const lista = Array.isArray(json.gruas) ? json.gruas : [];
-          document.getElementById("gruas-aplicaveis").value = lista.length ? lista.join("\n") : "Não encontrado";
-        } else {
-          document.getElementById("gruas-aplicaveis").value = "Não encontrado";
-          logDebug("Gruas aplicáveis: resposta inválida/sem ok");
-        }
-      } catch (e) {
-        document.getElementById("gruas-aplicaveis").value = "Erro ao processar";
-        logDebug("Erro ao parsear resposta Gruas: " + e);
+  // (A) Resultado da consulta (H -> I) — preenche #resultado-google
+  const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
+  logDebug("GET Resultado da consulta (H->I): " + urlI);
+  fetch(urlI)
+    .then(r => r.text())
+    .then(raw => {
+      logDebug("Resposta (H->I) raw: " + raw);
+      let j = null; try { j = JSON.parse(raw); } catch {}
+      if (j && j.ok) {
+        const valor = (j.resultado || "").trim();
+        if (elI) elI.value = valor || "Não encontrado";
+      } else {
+        if (elI) elI.value = "Não encontrado";
+        logDebug("H->I: resposta inválida/sem ok");
       }
     })
-    .catch(err => logDebug("Erro fetch Gruas: " + err));
-}
+    .catch(err => { if (elI) elI.value = "Erro na consulta"; logDebug("Erro H->I:", err); });
 
-function buscarCorrespondenciaExata(parte0, parte1Limpo) {
-  const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
-  const url = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1Limpo)}`;
-  logDebug("GET Correspondência exata: " + url);
-
-  fetch(url)
-    .then(resp => resp.text())
-    .then(text => {
-      logDebug("Resposta Exata (raw): " + text);
-      try {
-        const json = JSON.parse(text);
-        if (json.ok) {
-          document.getElementById("correspondencia-exata").value = (json.exata || "").trim() || "Não encontrado";
-        } else {
-          document.getElementById("correspondencia-exata").value = "Não encontrado";
-          logDebug("Correspondência exata: resposta inválida/sem ok");
-        }
-      } catch (e) {
-        document.getElementById("correspondencia-exata").value = "Erro ao processar";
-        logDebug("Erro ao parsear resposta Exata: " + e);
+  // (B) Gruas aplicáveis (H -> C[])
+  const urlGruas = `${endpoint}?mode=gruas&h=${encodeURIComponent(parte0)}`;
+  logDebug("GET Gruas aplicáveis (H->C[]): " + urlGruas);
+  fetch(urlGruas)
+    .then(r => r.text())
+    .then(raw => {
+      logDebug("Resposta Gruas raw: " + raw);
+      let j = null; try { j = JSON.parse(raw); } catch {}
+      if (j && j.ok) {
+        const lista = Array.isArray(j.gruas) ? j.gruas : [];
+        if (elGruas) elGruas.value = lista.length ? lista.join("\n") : "Não encontrado";
+      } else {
+        if (elGruas) elGruas.value = "Não encontrado";
+        logDebug("Gruas: resposta inválida/sem ok");
       }
     })
-    .catch(err => logDebug("Erro fetch Exata: " + err));
+    .catch(err => { if (elGruas) elGruas.value = "Erro na consulta"; logDebug("Erro Gruas:", err); });
+
+  // (C) Correspondência exata (H & K -> M)
+  const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1Limpo)}`;
+  logDebug("GET Correspondência exata (H&K->M): " + urlExata);
+  fetch(urlExata)
+    .then(r => r.text())
+    .then(raw => {
+      logDebug("Resposta Exata raw: " + raw);
+      let j = null; try { j = JSON.parse(raw); } catch {}
+      if (j && j.ok) {
+        const valor = (j.exata || "").trim();
+        if (elExata) elExata.value = valor || "Não encontrado";
+      } else {
+        if (elExata) elExata.value = "Não encontrado";
+        logDebug("Exata: resposta inválida/sem ok");
+      }
+    })
+    .catch(err => { if (elExata) elExata.value = "Erro na consulta"; logDebug("Erro Exata:", err); });
 }
 
 function registrarMovimentacao(tipo) {
-  const codigoManual = document.getElementById("manual-input").value.trim();
-  const codigoLido = document.getElementById("codigo-lido").value.trim();
-  const codigo = codigoManual || codigoLido;
-
-  if (!codigo) {
-    document.getElementById("status-msg").innerText = "Informe ou leia um código.";
-    return;
-  }
-
-  logDebug(`Registrando ${tipo} para o código: ${codigo}`);
-  // POST de registro (desativado por enquanto)
+  const manual = document.getElementById("manual-input").value.trim();
+  const lido = document.getElementById("codigo-lido").value.trim();
+  const codigo = manual || lido;
+  if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
+  logDebug(`Registrando ${tipo}: ${codigo}`);
+  // POST (se necessário)...
 }
