@@ -1,4 +1,4 @@
-// v1.5 - Gruas aplicáveis passa a exibir C (todas) e M (todas) vindas do Apps Script; mantém debounce e auto-stop
+// v1.6 - Loga o texto final de 'Gruas aplicáveis', força cache-busting e reforça o set do campo
 
 let html5QrCode;
 let scannerRunning = false;
@@ -126,7 +126,7 @@ function processarQRCode(qrCodeMessage) {
     else { if (elI) elI.value = "Não encontrado"; logDebug("H->I: resposta inválida/sem ok"); }
   }).catch(err=>{ if (elI) elI.value="Erro na consulta"; logDebug("Erro H->I:", err); });
 
-  // (B) H -> C[] e M[] (todas)
+  // (B) H -> C[] e M[]
   const urlGruas = `${endpoint}?mode=gruas&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Gruas aplicáveis (H->C[] & M[]): " + urlGruas);
   fetch(urlGruas).then(r=>r.text()).then(raw=>{
@@ -135,12 +135,26 @@ function processarQRCode(qrCodeMessage) {
     if (j && j.ok) {
       const listaC = Array.isArray(j.gruasC) ? j.gruasC : [];
       const listaM = Array.isArray(j.gruasM) ? j.gruasM : [];
-      // Monta texto: primeiro C (modelos de linha), depois M (GT-xx etc.)
+
       const linhas = [];
       if (listaC.length) linhas.push(`Modelos (C): ${listaC.join(", ")}`);
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
+
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
+
+      // seta imediatamente
       if (elGruas) elGruas.value = texto;
+      logDebug("Gruas aplicáveis (texto final): " + texto);
+
+      // re-seta após um pequeno delay (evita alguma condição de corrida rara)
+      setTimeout(()=>{
+        const el2 = document.getElementById("gruas-aplicaveis");
+        if (el2 && el2.value !== texto) {
+          el2.value = texto;
+          logDebug("Gruas aplicáveis reescrito após delay.");
+        }
+      }, 50);
+
     } else {
       if (elGruas) elGruas.value = "Não encontrado";
       logDebug("Gruas: resposta inválida/sem ok");
