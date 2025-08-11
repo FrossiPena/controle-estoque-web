@@ -1,4 +1,4 @@
-// v0.3 - Usa partes[1] sem zeros à esquerda; corrige erro de usar .value em string; logs de valores original/limpo
+// v1.1 - Prioriza câmera traseira: tenta facingMode 'environment'; fallback escolhe câmera 'back/rear/traseira'
 
 let html5QrCode;
 let scannerRunning = false;
@@ -29,21 +29,50 @@ function iniciarLeitor() {
   logDebug("Iniciando leitor...");
   html5QrCode = new Html5Qrcode("qr-reader");
 
-  Html5Qrcode.getCameras().then(cameras => {
-    if (cameras && cameras.length) {
-      const cameraId = cameras[0].id;
+  const config = { fps: 10, qrbox: 250 };
+
+  // 1) Tenta usar facingMode 'environment' (traseira) — melhor para iOS/Safari
+  html5QrCode.start(
+    { facingMode: { exact: "environment" } },
+    config,
+    qrCodeMessage => processarQRCode(qrCodeMessage)
+  ).then(() => {
+    scannerRunning = true;
+    logDebug("Leitor iniciado com facingMode=environment.");
+  }).catch(async (err) => {
+    logDebug("Falhou facingMode=environment, tentando listar câmeras... " + err);
+
+    try {
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras || !cameras.length) {
+        logDebug("Nenhuma câmera encontrada.");
+        return;
+      }
+
+      // 2) Procura explicitamente por 'back', 'rear', 'traseira', 'environment' no label
+      const preferidas = cameras.filter(c =>
+        /back|rear|traseira|environment/i.test(c.label || "")
+      );
+
+      // Se não achar por nome, tenta a última (muitos devices listam traseira por último)
+      const escolhida = (preferidas[0] || cameras[cameras.length - 1]);
+      logDebug("Câmera escolhida: " + (escolhida.label || escolhida.id));
+
       html5QrCode.start(
-        cameraId,
-        { fps: 10, qrbox: 250 },
+        escolhida.id,
+        config,
         qrCodeMessage => processarQRCode(qrCodeMessage)
       ).then(() => {
         scannerRunning = true;
-        logDebug("Leitor iniciado com sucesso.");
-      }).catch(err => logDebug("Erro ao iniciar leitor: " + err));
-    } else {
-      logDebug("Nenhuma câmera encontrada.");
+        logDebug("Leitor iniciado com cameraId selecionada.");
+      }).catch(e2 => {
+        logDebug("Erro ao iniciar com cameraId: " + e2);
+      });
+
+    } catch (e) {
+      logDebug("Erro ao obter lista de câmeras: " + e);
     }
-  }).catch(err => logDebug("Erro ao acessar câmeras: " + err));
+  });
 }
 
 function pararLeitor() {
@@ -70,17 +99,16 @@ function processarQRCode(qrCodeMessage) {
 
   const parte0 = String(partes[0]).trim();
   const parte1Original = String(partes[1]).trim();
-  let parte1Limpo = parte1Original.replace(/^0+/, ""); // remove zeros à esquerda
-  if (parte1Limpo === "") parte1Limpo = "0"; // evita string vazia se era tudo zero
+  let parte1Limpo = parte1Original.replace(/^0+/, "");
+  if (parte1Limpo === "") parte1Limpo = "0";
 
-  // Atualiza a UI
   document.getElementById("codigo-lido").value = qrCodeMessage;
   document.getElementById("campo1").value = parte0;
-  document.getElementById("campo2").value = parte1Limpo; // mostra o valor já limpo
+  document.getElementById("campo2").value = parte1Limpo; // mostra já limpo
   document.getElementById("campo3").value = partes[2];
   document.getElementById("campo4").value = partes[3];
 
-  // Atualiza o array para evitar referências antigas: partes[1] agora é o valor limpo!
+  // Atualiza o array (evita usar valor antigo por engano)
   partes[1] = parte1Limpo;
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
@@ -91,7 +119,6 @@ function processarQRCode(qrCodeMessage) {
   if (gruasEl) gruasEl.value = "";
   if (exataEl) exataEl.value = "";
 
-  // Consultas
   buscarGruasAplicaveis(parte0);
   buscarCorrespondenciaExata(parte0, parte1Limpo);
 }
@@ -158,6 +185,5 @@ function registrarMovimentacao(tipo) {
   }
 
   logDebug(`Registrando ${tipo} para o código: ${codigo}`);
-  // POST de registro (se/quando você quiser reativar)
-  // fetch(endpoint, { method: "POST", body: JSON.stringify({tipo, codigo, timestamp: new Date().toISOString()}), headers: {"Content-Type": "application/json"} })
+  // POST de registro (desativado por enquanto)
 }
