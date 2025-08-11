@@ -1,7 +1,8 @@
-// v1.2 - Prioriza câmera traseira + restaura preenchimento de #resultado-google (H->I via mode=i_por_h) + mantém Gruas (H->C) e Exata (H&K->M)
+// v1.3 - Auto "parar leitura" após primeira leitura válida + debounce contra múltiplas leituras
 
 let html5QrCode;
 let scannerRunning = false;
+let leituraProcessada = false; // trava (debounce) de leitura
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -25,12 +26,12 @@ function iniciarLeitor() {
   if (scannerRunning) return;
   logDebug("Iniciando leitor...");
   html5QrCode = new Html5Qrcode("qr-reader");
+  leituraProcessada = false; // libera para uma nova leitura
 
   const config = { fps: 10, qrbox: 250 };
 
-  // Tenta câmera traseira por facingMode
   html5QrCode.start(
-    { facingMode: { exact: "environment" } },
+    { facingMode: { exact: "environment" } }, // tenta traseira
     config,
     qrCodeMessage => processarQRCode(qrCodeMessage)
   ).then(() => {
@@ -50,6 +51,7 @@ function iniciarLeitor() {
         qrCodeMessage => processarQRCode(qrCodeMessage)
       ).then(() => {
         scannerRunning = true;
+        leituraProcessada = false;
         logDebug("Leitor iniciado com cameraId selecionada.");
       }).catch(e2 => logDebug("Erro ao iniciar com cameraId: " + e2));
     } catch (e) {
@@ -70,6 +72,13 @@ function pararLeitor() {
 }
 
 function processarQRCode(qrCodeMessage) {
+  // Debounce: se já processamos uma leitura, ignora demais callbacks
+  if (leituraProcessada) {
+    logDebug("Leitura adicional ignorada (debounce ativo).");
+    return;
+  }
+  leituraProcessada = true;
+
   logDebug("QR bruto lido: " + qrCodeMessage);
 
   const partes = qrCodeMessage.split("|").filter(Boolean);
@@ -77,8 +86,12 @@ function processarQRCode(qrCodeMessage) {
 
   if (partes.length < 4) {
     logDebug("Formato inválido: esperado 4 partes.");
+    leituraProcessada = false; // permite nova leitura caso queira tentar de novo
     return;
   }
+
+  // Auto-stop imediato para evitar múltiplos GETs
+  pararLeitor();
 
   const parte0 = String(partes[0]).trim();
   const parte1Original = String(partes[1]).trim();
@@ -103,10 +116,9 @@ function processarQRCode(qrCodeMessage) {
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
-  // End-point único
   const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
-  // (A) Resultado da consulta (H -> I) — preenche #resultado-google
+  // (A) Resultado da consulta (H -> I)
   const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
   fetch(urlI)
@@ -167,5 +179,5 @@ function registrarMovimentacao(tipo) {
   const codigo = manual || lido;
   if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
   logDebug(`Registrando ${tipo}: ${codigo}`);
-  // POST (se necessário)...
+  // POST (quando ativar)
 }
