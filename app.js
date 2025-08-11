@@ -1,8 +1,12 @@
-// v1.3 - Auto "parar leitura" após primeira leitura válida + debounce contra múltiplas leituras
+// v1.4 - Debounce agressivo: processa só a 1ª leitura, bloqueia fetches duplicados, e para a câmera imediatamente
 
 let html5QrCode;
 let scannerRunning = false;
-let leituraProcessada = false; // trava (debounce) de leitura
+
+// Travas anti-duplicação
+let leituraProcessada = false;  // bloqueia callbacks repetidos
+let fetchStarted = false;       // garante apenas um lote de requisições
+let lastHandledAt = 0;          // janela temporal de segurança
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -10,23 +14,18 @@ function logDebug(msg) {
   if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
 
-function limparDebug() {
-  const el = document.getElementById("debug-log");
-  if (el) el.value = "";
-}
-
-function copiarDebug() {
-  const el = document.getElementById("debug-log");
-  if (!el) return;
-  el.select();
-  document.execCommand("copy");
-}
+function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
+function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
 function iniciarLeitor() {
   if (scannerRunning) return;
   logDebug("Iniciando leitor...");
   html5QrCode = new Html5Qrcode("qr-reader");
-  leituraProcessada = false; // libera para uma nova leitura
+
+  // reset travas
+  leituraProcessada = false;
+  fetchStarted = false;
+  lastHandledAt = 0;
 
   const config = { fps: 10, qrbox: 250 };
 
@@ -52,6 +51,8 @@ function iniciarLeitor() {
       ).then(() => {
         scannerRunning = true;
         leituraProcessada = false;
+        fetchStarted = false;
+        lastHandledAt = 0;
         logDebug("Leitor iniciado com cameraId selecionada.");
       }).catch(e2 => logDebug("Erro ao iniciar com cameraId: " + e2));
     } catch (e) {
@@ -72,12 +73,14 @@ function pararLeitor() {
 }
 
 function processarQRCode(qrCodeMessage) {
-  // Debounce: se já processamos uma leitura, ignora demais callbacks
-  if (leituraProcessada) {
-    logDebug("Leitura adicional ignorada (debounce ativo).");
+  // Janela mínima de 800ms + flag de leitura já processada
+  const now = Date.now();
+  if (leituraProcessada || (now - lastHandledAt) < 800) {
+    logDebug("Leitura ignorada (debounce ativo).");
     return;
   }
-  leituraProcessada = true;
+  leituraProcessada = true;    // bloqueia chamadas seguintes
+  lastHandledAt = now;
 
   logDebug("QR bruto lido: " + qrCodeMessage);
 
@@ -86,18 +89,18 @@ function processarQRCode(qrCodeMessage) {
 
   if (partes.length < 4) {
     logDebug("Formato inválido: esperado 4 partes.");
-    leituraProcessada = false; // permite nova leitura caso queira tentar de novo
+    leituraProcessada = false; // permite nova tentativa
     return;
   }
 
-  // Auto-stop imediato para evitar múltiplos GETs
+  // Para a câmera imediatamente para não gerar novos callbacks
   pararLeitor();
 
   const parte0 = String(partes[0]).trim();
   const parte1Original = String(partes[1]).trim();
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
-  partes[1] = parte1Limpo; // sobrescreve para evitar confusão
+  partes[1] = parte1Limpo;
 
   // Preenche UI
   document.getElementById("codigo-lido").value = qrCodeMessage;
@@ -106,7 +109,7 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("campo3").value = partes[2];
   document.getElementById("campo4").value = partes[3];
 
-  // Limpa resultados antes de buscar
+  // Limpa resultados
   const elI = document.getElementById("resultado-google");
   const elGruas = document.getElementById("gruas-aplicaveis");
   const elExata = document.getElementById("correspondencia-exata");
@@ -115,6 +118,13 @@ function processarQRCode(qrCodeMessage) {
   if (elExata) elExata.value = "";
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
+
+  // Garante que os GETs rodem apenas uma vez
+  if (fetchStarted) {
+    logDebug("Fetch bloqueado (já iniciado).");
+    return;
+  }
+  fetchStarted = true;
 
   const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
