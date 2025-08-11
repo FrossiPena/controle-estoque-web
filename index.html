@@ -1,3 +1,4 @@
+<!-- v2.0 - Adiciona campo 'Descrição Português' abaixo de 'Resultado da consulta' -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -32,13 +33,16 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
     </div>
 
-    <!-- Resultado da busca no Google Sheets -->
+    <!-- Resultado da busca no Google Sheets (H -> I) -->
     <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
 
-    <!-- Novo campo Correspondência exata -->
+    <!-- NOVO: Descrição Português (via MachineCards[L] -> 16 chars -> relação de produtos[H] => B) -->
+    <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly>
+
+    <!-- Correspondência exata -->
     <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly>
 
-    <!-- Novo campo Gruas aplicáveis -->
+    <!-- Gruas aplicáveis (multilinhas) -->
     <textarea id="gruas-aplicaveis" rows="4" placeholder="Gruas aplicáveis" readonly></textarea>
 
     <!-- Entrada manual -->
@@ -63,8 +67,6 @@
     </div>
   </div>
 
-  <!-- v1.6 -->
-<script src="app.js?v=1.6"></script>
+  <script src="app.js"></script>
 </body>
 </html>
-
