@@ -1,4 +1,4 @@
-// v2.0 - Adiciona consulta 'Descrição Português' (mode=desc_pt); mantém auto-stop e debounce; loga versão carregada
+// v2.0 - Declara versão no log + adiciona consulta 'Descrição Português' (mode=desc_pt) a planilha separada
 
 const APP_VERSION = "v2.0";
 
@@ -91,7 +91,7 @@ function processarQRCode(qrCodeMessage) {
     return;
   }
 
-  pararLeitor(); // evita novos callbacks
+  pararLeitor();
 
   const parte0 = String(partes[0]).trim();
   const parte1Original = String(partes[1]).trim();
@@ -141,11 +141,9 @@ function processarQRCode(qrCodeMessage) {
     if (j && j.ok) {
       const listaC = Array.isArray(j.gruasC) ? j.gruasC : [];
       const listaM = Array.isArray(j.gruasM) ? j.gruasM : [];
-
       const linhas = [];
       if (listaC.length) linhas.push(`Modelos (C): ${listaC.join(", ")}`);
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
-
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
       if (elGruas) elGruas.value = texto;
       logDebug("Gruas aplicáveis (texto final): " + texto);
@@ -171,7 +169,7 @@ function processarQRCode(qrCodeMessage) {
     }
   }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata:", err); });
 
-  // (D) NOVO: Descrição Português (H -> L[0..15] -> lookup em 'RELAÇÃO DE PRODUTOS - COM PREÇO PADRÃO'[H] => B)
+  // (D) NOVO: Descrição Português (MachineCards[L]->16 chars -> Relação[H] => B)
   const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
@@ -180,7 +178,7 @@ function processarQRCode(qrCodeMessage) {
     if (j && j.ok) {
       const valor = (j.descricao || "").trim();
       if (elDescPT) elDescPT.value = valor || "Não encontrado";
-      logDebug("Descrição PT preenchida:", valor || "Não encontrado");
+      logDebug("Descrição PT preenchida: " + (valor || "Não encontrado"));
     } else {
       if (elDescPT) elDescPT.value = "Não encontrado";
       logDebug("Descrição PT: resposta inválida/sem ok");
