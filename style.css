@@ -1,4 +1,4 @@
-/* v3.3 - Layout para botões Consultar/Registrar acima do Resultado da consulta */
+/* v3.4 - Checkbox GPS inline ao lado do botão Registrar */
 
 body {
   font-family: Arial, sans-serif;
@@ -52,9 +52,7 @@ input, textarea, select {
 }
 
 #campo3,
-#campo4 {
-  display: none;
-}
+#campo4 { display: none; }
 
 .campo1-ok { color: #000; }
 .campo1-bad { color: #c00000; }
@@ -75,6 +73,22 @@ input, textarea, select {
 }
 
 .loc-row label { font-weight: bold; }
+
+.gps-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fafafa;
+  user-select: none;
+}
+
+.gps-inline input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
 
 .debug-wrap { margin-top: 14px; }
 .debug-wrap label {
