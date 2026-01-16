@@ -1,6 +1,6 @@
-// v2.1 - Debug reforçado da consulta 'Descrição Português' (URL, raw, JSON, key16, sheet, row)
+// v3.1 - Version bump + campos LOC/Rua/Andar no HTML (JS mantém leitura; adiciona sanitização numérica)
 
-const APP_VERSION = "v2.1";
+const APP_VERSION = "v3.1";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -14,6 +14,26 @@ function logDebug(msg) {
   if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
+
+window.addEventListener("DOMContentLoaded", () => {
+  const rua = document.getElementById("rua-input");
+  const andar = document.getElementById("andar-input");
+
+  function onlyDigits(el, label) {
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const before = el.value;
+      const after = before.replace(/\D+/g, ""); // remove tudo que não é número
+      if (before !== after) {
+        el.value = after;
+        logDebug(`${label}: removidos caracteres não numéricos.`);
+      }
+    });
+  }
+
+  onlyDigits(rua, "Rua");
+  onlyDigits(andar, "Andar");
+});
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
@@ -102,8 +122,8 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("codigo-lido").value = qrCodeMessage;
   document.getElementById("campo1").value = parte0;
   document.getElementById("campo2").value = parte1Limpo;
-  document.getElementById("campo3").value = partes[2];
-  document.getElementById("campo4").value = partes[3];
+  document.getElementById("campo3").value = partes[2] || "";
+  document.getElementById("campo4").value = partes[3] || "";
 
   const elI = document.getElementById("resultado-google");
   const elGruas = document.getElementById("gruas-aplicaveis");
@@ -122,7 +142,6 @@ function processarQRCode(qrCodeMessage) {
 
   const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
-  // (A) H -> I
   const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
   fetch(urlI).then(r=>r.text()).then(raw=>{
@@ -130,9 +149,8 @@ function processarQRCode(qrCodeMessage) {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
     else { if (elI) elI.value = "Não encontrado"; logDebug("H->I: resposta inválida/sem ok"); }
-  }).catch(err=>{ if (elI) elI.value="Erro na consulta"; logDebug("Erro H->I:", err); });
+  }).catch(err=>{ if (elI) elI.value="Erro na consulta"; logDebug("Erro H->I: " + err); });
 
-  // (B) H -> C[] e M[]
   const urlGruas = `${endpoint}?mode=gruas&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Gruas aplicáveis (H->C[] & M[]): " + urlGruas);
   fetch(urlGruas).then(r=>r.text()).then(raw=>{
@@ -152,9 +170,8 @@ function processarQRCode(qrCodeMessage) {
       if (elGruas) elGruas.value = "Não encontrado";
       logDebug("Gruas: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elGruas) elGruas.value="Erro na consulta"; logDebug("Erro Gruas:", err); });
+  }).catch(err=>{ if (elGruas) elGruas.value="Erro na consulta"; logDebug("Erro Gruas: " + err); });
 
-  // (C) H & K -> M (exata)
   const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1Limpo)}`;
   logDebug("GET Correspondência exata (H&K->M): " + urlExata);
   fetch(urlExata).then(r=>r.text()).then(raw=>{
@@ -167,17 +184,13 @@ function processarQRCode(qrCodeMessage) {
       if (elExata) elExata.value = "Não encontrado";
       logDebug("Exata: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata:", err); });
+  }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata: " + err); });
 
-  // (D) Descrição Português
   const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (j) {
-      logDebug(`DescPT JSON ok:${!!j.ok} key16:${j.key16||""} sheet:${j.sheet||""} row:${j.row||""} descricao:${(j.descricao||"").substring(0,60)}`);
-    }
     if (j && j.ok) {
       const valor = (j.descricao || "").trim();
       if (elDescPT) elDescPT.value = valor || "Não encontrado";
@@ -186,10 +199,7 @@ function processarQRCode(qrCodeMessage) {
       if (elDescPT) elDescPT.value = "Não encontrado";
       logDebug("Descrição PT: resposta inválida/sem ok");
     }
-  }).catch(err=>{
-    if (elDescPT) elDescPT.value="Erro na consulta";
-    logDebug("Erro Descrição PT:", err);
-  });
+  }).catch(err=>{ if (elDescPT) elDescPT.value="Erro na consulta"; logDebug("Erro Descrição PT: " + err); });
 }
 
 function registrarMovimentacao(tipo) {
@@ -197,11 +207,11 @@ function registrarMovimentacao(tipo) {
   const lido = document.getElementById("codigo-lido").value.trim();
   const codigo = manual || lido;
   if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
-  logDebug(`Registrando ${tipo}: ${codigo}`);
+
+  const loc = (document.getElementById("loc-select")?.value || "").trim();
+  const rua = (document.getElementById("rua-input")?.value || "").trim();
+  const andar = (document.getElementById("andar-input")?.value || "").trim();
+
+  logDebug(`Registrando ${tipo}: ${codigo} | loc=${loc} rua=${rua} andar=${andar}`);
+  // POST (quando ativar)
 }
- <div class="parsed-fields">
-      <input type="text" id="campo1" placeholder="Codigo 9" readonly>
-      <input type="text" id="campo2" placeholder="Codigo Individual" readonly>
-      <input type="text" id="campo3" placeholder="Campo 3" readonly>
-      <input type="text" id="campo4" placeholder="Campo 4" readonly>
-    </div>
