@@ -1,13 +1,14 @@
-// v3.4 - Checkbox GPS no Registrar: captura latitude/longitude e salva em string (gpsString)
+// v3.5 - Registrar grava no Google Sheets "Inventário" via Apps Script (mode=log_mov), com debug de request/response
 
-const APP_VERSION = "v3.4";
+const APP_VERSION = "v3.5";
+
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
 let html5QrCode;
 let scannerRunning = false;
 let leituraProcessada = false;
 let lastHandledAt = 0;
 
-// Armazena a última leitura de GPS em string, quando solicitada
 let gpsString = "";
 
 function logDebug(msg) {
@@ -51,8 +52,6 @@ function setCampo1CorPorTamanho(valor) {
 
   if (len === 9) el.classList.add("campo1-ok");
   else el.classList.add("campo1-bad");
-
-  logDebug(`Validação campo1: "${valor}" (len=${len}) => ${len === 9 ? "OK" : "ERRO"}`);
 }
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
@@ -144,17 +143,13 @@ function processarQRCode(qrCodeMessage) {
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
-  // dispara a consulta automaticamente após leitura
   consultarDados();
 }
 
 function consultarDados() {
-  const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
-
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   let parte1 = (document.getElementById("campo2")?.value || "").trim();
 
-  const parte1Original = parte1;
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
   if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
@@ -170,7 +165,6 @@ function consultarDados() {
   if (elDescPT) elDescPT.value = "";
 
   if (!parte0) {
-    logDebug("Consultar: campo1 vazio. Nada a consultar.");
     if (elI) elI.value = "Não encontrado";
     if (elGruas) elGruas.value = "Não encontrado";
     if (elExata) elExata.value = "Não encontrado";
@@ -179,18 +173,17 @@ function consultarDados() {
   }
 
   setCampo1CorPorTamanho(parte0);
-  logDebug(`Consultar: parte0=${parte0} | parte1=${parte1} (original=${parte1Original})`);
 
-  const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
+  const urlI = `${ENDPOINT}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
   fetch(urlI).then(r=>r.text()).then(raw=>{
     logDebug("Resposta (H->I) raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
-    else { if (elI) elI.value = "Não encontrado"; logDebug("H->I: resposta inválida/sem ok"); }
-  }).catch(err=>{ if (elI) elI.value="Erro na consulta"; logDebug("Erro H->I: " + err); });
+    else { if (elI) elI.value = "Não encontrado"; }
+  });
 
-  const urlGruas = `${endpoint}?mode=gruas&h=${encodeURIComponent(parte0)}`;
+  const urlGruas = `${ENDPOINT}?mode=gruas&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Gruas aplicáveis (H->C[] & M[]): " + urlGruas);
   fetch(urlGruas).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Gruas raw: " + raw);
@@ -203,115 +196,118 @@ function consultarDados() {
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
       document.getElementById("gruas-aplicaveis").value = texto;
-      logDebug("Gruas aplicáveis (texto final): " + texto);
     } else {
       document.getElementById("gruas-aplicaveis").value = "Não encontrado";
-      logDebug("Gruas: resposta inválida/sem ok");
     }
-  }).catch(err=>{
-    document.getElementById("gruas-aplicaveis").value = "Erro na consulta";
-    logDebug("Erro Gruas: " + err);
   });
 
-  const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
+  const urlExata = `${ENDPOINT}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
   logDebug("GET Correspondência exata (H&K->M): " + urlExata);
   fetch(urlExata).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Exata raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (j && j.ok) {
-      const valor = (j.exata || "").trim();
-      document.getElementById("correspondencia-exata").value = valor || "Não encontrado";
-    } else {
-      document.getElementById("correspondencia-exata").value = "Não encontrado";
-      logDebug("Exata: resposta inválida/sem ok");
-    }
-  }).catch(err=>{
-    document.getElementById("correspondencia-exata").value = "Erro na consulta";
-    logDebug("Erro Exata: " + err);
+    document.getElementById("correspondencia-exata").value =
+      (j && j.ok && (j.exata||"").trim()) ? (j.exata||"").trim() : "Não encontrado";
   });
 
-  const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
+  const urlDescPT = `${ENDPOINT}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (j && j.ok) {
-      const valor = (j.descricao || "").trim();
-      document.getElementById("descricao-pt").value = valor || "Não encontrado";
-      logDebug("Descrição PT preenchida: " + (valor || "Não encontrado"));
-    } else {
-      document.getElementById("descricao-pt").value = "Não encontrado";
-      logDebug("Descrição PT: resposta inválida/sem ok");
-    }
-  }).catch(err=>{
-    document.getElementById("descricao-pt").value = "Erro na consulta";
-    logDebug("Erro Descrição PT: " + err);
+    document.getElementById("descricao-pt").value =
+      (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
   });
 }
 
-// --- NOVO: GPS ---
+// --- GPS ---
 function obterGpsString() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
       reject(new Error("Geolocation não suportado neste navegador."));
       return;
     }
-
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    };
-
+    const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        const acc = pos.coords.accuracy; // metros
+        const acc = pos.coords.accuracy;
         const ts = new Date(pos.timestamp).toISOString();
-
-        const s = `lat=${lat}, lon=${lon}, acc_m=${acc}, ts=${ts}`;
-        resolve(s);
+        resolve(`lat=${lat}, lon=${lon}, acc_m=${acc}, ts=${ts}`);
       },
-      (err) => {
-        reject(new Error(`Falha ao obter GPS: ${err.message}`));
-      },
+      (err) => reject(new Error(`Falha ao obter GPS: ${err.message}`)),
       options
     );
   });
 }
 
+// --- NOVO: Registrar grava no Sheets Inventário via Apps Script ---
 async function registrarMovimentacaoUI() {
-  const parte0 = (document.getElementById("campo1")?.value || "").trim();
-  const parte1 = (document.getElementById("campo2")?.value || "").trim();
-  const loc = (document.getElementById("loc-select")?.value || "").trim();
-  const rua = (document.getElementById("rua-input")?.value || "").trim();
+  const status = document.getElementById("status-msg");
+
+  const campo1 = (document.getElementById("campo1")?.value || "").trim();
+  let campo2 = (document.getElementById("campo2")?.value || "").trim();
+  const loc   = (document.getElementById("loc-select")?.value || "").trim();
+  const rua   = (document.getElementById("rua-input")?.value || "").trim();
   const andar = (document.getElementById("andar-input")?.value || "").trim();
 
   const gpsOn = !!document.getElementById("gps-check")?.checked;
 
-  logDebug(`Registrar (novo): parte0=${parte0} parte1=${parte1} loc=${loc} rua=${rua} andar=${andar} gps=${gpsOn ? 1 : 0}`);
+  // Normaliza campo2 (remove zeros à esquerda) sempre
+  campo2 = campo2.replace(/^0+/, "");
+  if (campo2 === "") campo2 = "0";
+  if (document.getElementById("campo2")) document.getElementById("campo2").value = campo2;
 
-  const status = document.getElementById("status-msg");
-  if (status) status.innerText = gpsOn ? "Obtendo GPS..." : "Registrando sem GPS...";
+  setCampo1CorPorTamanho(campo1);
+
+  if (!campo1) {
+    logDebug("Registrar: campo1 vazio. Cancelando.");
+    if (status) status.innerText = "Preencha o campo1 antes de registrar.";
+    return;
+  }
 
   gpsString = "";
+  if (status) status.innerText = gpsOn ? "Obtendo GPS..." : "Registrando...";
 
   if (gpsOn) {
     try {
       gpsString = await obterGpsString();
       logDebug("GPS capturado: " + gpsString);
-      if (status) status.innerText = "GPS capturado. Pronto para registrar.";
     } catch (e) {
       logDebug("Erro GPS: " + e);
-      if (status) status.innerText = "Erro ao capturar GPS (ver debug).";
-      // segue sem gpsString
+      // segue sem GPS
+      gpsString = "";
     }
-  } else {
-    if (status) status.innerText = "Pronto para registrar (sem GPS).";
   }
 
-  // Neste ponto você já tem gpsString (ou vazio).
-  // Próximo passo (quando você mandar): enviar via POST para o Apps Script e gravar em planilha de log.
-  logDebug("gpsString atual: " + (gpsString || "(vazio)"));
+  const urlLog =
+    `${ENDPOINT}?mode=log_mov` +
+    `&campo1=${encodeURIComponent(campo1)}` +
+    `&campo2=${encodeURIComponent(campo2)}` +
+    `&loc=${encodeURIComponent(loc)}` +
+    `&rua=${encodeURIComponent(rua)}` +
+    `&andar=${encodeURIComponent(andar)}` +
+    `&gpsString=${encodeURIComponent(gpsString)}`;
+
+  logDebug("GET Registrar (log_mov): " + urlLog);
+
+  try {
+    const raw = await (await fetch(urlLog)).text();
+    logDebug("Resposta Registrar raw: " + raw);
+
+    let j = null;
+    try { j = JSON.parse(raw); } catch {}
+
+    if (j && j.ok && j.appended) {
+      if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
+      logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
+    } else {
+      if (status) status.innerText = "Falha ao registrar (ver debug).";
+      logDebug("Registrar: resposta inválida/sem ok.");
+    }
+  } catch (err) {
+    if (status) status.innerText = "Erro de rede ao registrar (ver debug).";
+    logDebug("Erro Registrar: " + err);
+  }
 }
