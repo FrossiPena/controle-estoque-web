@@ -1,72 +1,94 @@
+/* v3.1 - Oculta campo3 e campo4 + adiciona layout para LOC/Rua/Andar */
+
 body {
   font-family: Arial, sans-serif;
+  background: #f4f4f4;
   margin: 0;
   padding: 0;
-  background: #f9f9f9;
-  color: #333;
 }
-.debug-wrap { margin-top: 16px; text-align: left; }
-#debug-log { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
-.debug-actions { display: flex; gap: 8px; margin-top: 6px; }
-
 
 .container {
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 20px;
-  text-align: center;
+  padding: 16px;
+  background: #fff;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 h1 {
-  font-size: 1.8em;
-  margin-bottom: 20px;
+  margin-top: 0;
+  text-align: center;
 }
 
-#correspondencia-exata,
-#gruas-aplicaveis {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 8px;
-}
-
-#gruas-aplicaveis {
-  resize: vertical;
-  font-family: inherit;
-}
-
-#manual-input {
-  width: 100%;
-  padding: 12px;
-  margin: 10px 0;
-  font-size: 1em;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-}
-
-.buttons {
+.scanner-buttons,
+.buttons,
+.debug-actions {
   display: flex;
-  justify-content: space-around;
-  margin-top: 20px;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 10px 0;
 }
 
 button {
-  padding: 12px 20px;
-  font-size: 1em;
-  border: none;
-  background-color: #007bff;
-  color: white;
-  border-radius: 5px;
+  padding: 10px 14px;
+  border: 0;
   cursor: pointer;
+  border-radius: 6px;
 }
 
-button:hover {
-  background-color: #0056b3;
+input, textarea, select {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid #ccc;
 }
 
-#status-msg {
-  margin-top: 20px;
+.parsed-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Hide solicitado */
+#campo3,
+#campo4 {
+  display: none;
+}
+
+/* NOVO: bloco de localização */
+.loc-fields {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+}
+
+.loc-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.loc-row label {
   font-weight: bold;
-  color: green;
 }
 
+.debug-wrap {
+  margin-top: 14px;
+}
 
+.debug-wrap label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+#debug-log {
+  font-family: Consolas, monospace;
+}
