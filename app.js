@@ -1,12 +1,14 @@
-// v3.3 - Botões Consultar/Registrar: consultarDados() e registrarMovimentacaoUI()
+// v3.4 - Checkbox GPS no Registrar: captura latitude/longitude e salva em string (gpsString)
 
-const APP_VERSION = "v3.3";
+const APP_VERSION = "v3.4";
 
 let html5QrCode;
 let scannerRunning = false;
 let leituraProcessada = false;
-let fetchStarted = false;
 let lastHandledAt = 0;
+
+// Armazena a última leitura de GPS em string, quando solicitada
+let gpsString = "";
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -18,6 +20,7 @@ logDebug(`Carregado app.js versão ${APP_VERSION}`);
 window.addEventListener("DOMContentLoaded", () => {
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
+  const campo1 = document.getElementById("campo1");
 
   function onlyDigits(el, label) {
     if (!el) return;
@@ -33,6 +36,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
+
+  if (campo1) {
+    campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
+  }
 });
 
 function setCampo1CorPorTamanho(valor) {
@@ -57,7 +64,6 @@ function iniciarLeitor() {
   html5QrCode = new Html5Qrcode("qr-reader");
 
   leituraProcessada = false;
-  fetchStarted = false;
   lastHandledAt = 0;
 
   const config = { fps: 10, qrbox: 250 };
@@ -84,7 +90,6 @@ function iniciarLeitor() {
       ).then(() => {
         scannerRunning = true;
         leituraProcessada = false;
-        fetchStarted = false;
         lastHandledAt = 0;
         logDebug("Leitor iniciado com cameraId selecionada.");
       }).catch(e2 => logDebug("Erro ao iniciar com cameraId: " + e2));
@@ -118,8 +123,8 @@ function processarQRCode(qrCodeMessage) {
   const partes = qrCodeMessage.split("|").filter(Boolean);
   logDebug("Partes após split('|'): " + JSON.stringify(partes));
 
-  if (partes.length < 4) {
-    logDebug("Formato inválido: esperado 4 partes.");
+  if (partes.length < 2) {
+    logDebug("Formato inválido: esperado ao menos parte0 e parte1.");
     leituraProcessada = false;
     return;
   }
@@ -127,27 +132,19 @@ function processarQRCode(qrCodeMessage) {
   pararLeitor();
 
   const parte0 = String(partes[0]).trim();
-  const parte1Original = String(partes[1]).trim();
+  const parte1Original = String(partes[1] || "").trim();
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
 
   document.getElementById("codigo-lido").value = qrCodeMessage;
-
-  const elCampo1 = document.getElementById("campo1");
-  const elCampo2 = document.getElementById("campo2");
-  const elCampo3 = document.getElementById("campo3");
-  const elCampo4 = document.getElementById("campo4");
-
-  if (elCampo1) elCampo1.value = parte0;
-  if (elCampo2) elCampo2.value = parte1Limpo;
-  if (elCampo3) elCampo3.value = partes[2] || "";
-  if (elCampo4) elCampo4.value = partes[3] || "";
+  document.getElementById("campo1").value = parte0;
+  document.getElementById("campo2").value = parte1Limpo;
 
   setCampo1CorPorTamanho(parte0);
 
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
-  // Após leitura, dispara a mesma rotina do botão Consultar
+  // dispara a consulta automaticamente após leitura
   consultarDados();
 }
 
@@ -157,7 +154,6 @@ function consultarDados() {
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   let parte1 = (document.getElementById("campo2")?.value || "").trim();
 
-  // normaliza parte1 (remove zeros à esquerda) mesmo em consulta manual
   const parte1Original = parte1;
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
@@ -185,9 +181,6 @@ function consultarDados() {
   setCampo1CorPorTamanho(parte0);
   logDebug(`Consultar: parte0=${parte0} | parte1=${parte1} (original=${parte1Original})`);
 
-  // Evita flood: permite nova consulta sempre, mas registra no log
-  fetchStarted = true;
-
   const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
   fetch(urlI).then(r=>r.text()).then(raw=>{
@@ -209,13 +202,16 @@ function consultarDados() {
       if (listaC.length) linhas.push(`Modelos (C): ${listaC.join(", ")}`);
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
-      if (elGruas) elGruas.value = texto;
+      document.getElementById("gruas-aplicaveis").value = texto;
       logDebug("Gruas aplicáveis (texto final): " + texto);
     } else {
-      if (elGruas) elGruas.value = "Não encontrado";
+      document.getElementById("gruas-aplicaveis").value = "Não encontrado";
       logDebug("Gruas: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elGruas) elGruas.value="Erro na consulta"; logDebug("Erro Gruas: " + err); });
+  }).catch(err=>{
+    document.getElementById("gruas-aplicaveis").value = "Erro na consulta";
+    logDebug("Erro Gruas: " + err);
+  });
 
   const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
   logDebug("GET Correspondência exata (H&K->M): " + urlExata);
@@ -224,12 +220,15 @@ function consultarDados() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) {
       const valor = (j.exata || "").trim();
-      if (elExata) elExata.value = valor || "Não encontrado";
+      document.getElementById("correspondencia-exata").value = valor || "Não encontrado";
     } else {
-      if (elExata) elExata.value = "Não encontrado";
+      document.getElementById("correspondencia-exata").value = "Não encontrado";
       logDebug("Exata: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elExata) elExata.value="Erro na consulta"; logDebug("Erro Exata: " + err); });
+  }).catch(err=>{
+    document.getElementById("correspondencia-exata").value = "Erro na consulta";
+    logDebug("Erro Exata: " + err);
+  });
 
   const urlDescPT = `${endpoint}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
@@ -238,36 +237,81 @@ function consultarDados() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) {
       const valor = (j.descricao || "").trim();
-      if (elDescPT) elDescPT.value = valor || "Não encontrado";
+      document.getElementById("descricao-pt").value = valor || "Não encontrado";
       logDebug("Descrição PT preenchida: " + (valor || "Não encontrado"));
     } else {
-      if (elDescPT) elDescPT.value = "Não encontrado";
+      document.getElementById("descricao-pt").value = "Não encontrado";
       logDebug("Descrição PT: resposta inválida/sem ok");
     }
-  }).catch(err=>{ if (elDescPT) elDescPT.value="Erro na consulta"; logDebug("Erro Descrição PT: " + err); });
+  }).catch(err=>{
+    document.getElementById("descricao-pt").value = "Erro na consulta";
+    logDebug("Erro Descrição PT: " + err);
+  });
 }
 
-function registrarMovimentacaoUI() {
-  // Placeholder: você ainda não definiu "entrada/saída" nesse botão.
-  // Podemos evoluir para abrir um modal, ou registrar conforme um toggle.
+// --- NOVO: GPS ---
+function obterGpsString() {
+  return new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      reject(new Error("Geolocation não suportado neste navegador."));
+      return;
+    }
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const acc = pos.coords.accuracy; // metros
+        const ts = new Date(pos.timestamp).toISOString();
+
+        const s = `lat=${lat}, lon=${lon}, acc_m=${acc}, ts=${ts}`;
+        resolve(s);
+      },
+      (err) => {
+        reject(new Error(`Falha ao obter GPS: ${err.message}`));
+      },
+      options
+    );
+  });
+}
+
+async function registrarMovimentacaoUI() {
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   const parte1 = (document.getElementById("campo2")?.value || "").trim();
   const loc = (document.getElementById("loc-select")?.value || "").trim();
   const rua = (document.getElementById("rua-input")?.value || "").trim();
   const andar = (document.getElementById("andar-input")?.value || "").trim();
 
-  logDebug(`Registrar (botão novo): parte0=${parte0} parte1=${parte1} loc=${loc} rua=${rua} andar=${andar}`);
-}
+  const gpsOn = !!document.getElementById("gps-check")?.checked;
 
-function registrarMovimentacao(tipo) {
-  const manual = document.getElementById("manual-input").value.trim();
-  const lido = document.getElementById("codigo-lido").value.trim();
-  const codigo = manual || lido;
-  if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
+  logDebug(`Registrar (novo): parte0=${parte0} parte1=${parte1} loc=${loc} rua=${rua} andar=${andar} gps=${gpsOn ? 1 : 0}`);
 
-  const loc = (document.getElementById("loc-select")?.value || "").trim();
-  const rua = (document.getElementById("rua-input")?.value || "").trim();
-  const andar = (document.getElementById("andar-input")?.value || "").trim();
+  const status = document.getElementById("status-msg");
+  if (status) status.innerText = gpsOn ? "Obtendo GPS..." : "Registrando sem GPS...";
 
-  logDebug(`Registrando ${tipo}: ${codigo} | loc=${loc} rua=${rua} andar=${andar}`);
+  gpsString = "";
+
+  if (gpsOn) {
+    try {
+      gpsString = await obterGpsString();
+      logDebug("GPS capturado: " + gpsString);
+      if (status) status.innerText = "GPS capturado. Pronto para registrar.";
+    } catch (e) {
+      logDebug("Erro GPS: " + e);
+      if (status) status.innerText = "Erro ao capturar GPS (ver debug).";
+      // segue sem gpsString
+    }
+  } else {
+    if (status) status.innerText = "Pronto para registrar (sem GPS).";
+  }
+
+  // Neste ponto você já tem gpsString (ou vazio).
+  // Próximo passo (quando você mandar): enviar via POST para o Apps Script e gravar em planilha de log.
+  logDebug("gpsString atual: " + (gpsString || "(vazio)"));
 }
