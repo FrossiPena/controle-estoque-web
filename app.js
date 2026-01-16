@@ -199,3 +199,9 @@ function registrarMovimentacao(tipo) {
   if (!codigo) { document.getElementById("status-msg").innerText = "Informe ou leia um código."; return; }
   logDebug(`Registrando ${tipo}: ${codigo}`);
 }
+ <div class="parsed-fields">
+      <input type="text" id="campo1" placeholder="Codigo 9" readonly>
+      <input type="text" id="campo2" placeholder="Codigo Individual" readonly>
+      <input type="text" id="campo3" placeholder="Campo 3" readonly>
+      <input type="text" id="campo4" placeholder="Campo 4" readonly>
+    </div>
