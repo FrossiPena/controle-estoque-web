@@ -1,4 +1,4 @@
-<!-- v3.1 - Adiciona campos LOC/Rua/Andar; mantém IDs campo1..4; campo3 e campo4 serão ocultos via CSS -->
+<!-- v3.3 - Adiciona botões Consultar e Registrar acima do "Resultado da consulta" -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -29,7 +29,6 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
     </div>
 
-    <!-- NOVO: Localização (LOC / Rua / Andar) -->
     <div class="loc-fields">
       <div class="loc-row">
         <label for="loc-select">LOC</label>
@@ -46,29 +45,22 @@
 
       <div class="loc-row">
         <label for="rua-input">Rua</label>
-        <input
-          type="text"
-          id="rua-input"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          placeholder="Somente números">
+        <input type="text" id="rua-input" inputmode="numeric" pattern="[0-9]*" placeholder="Somente números">
       </div>
 
       <div class="loc-row">
         <label for="andar-input">Andar</label>
-        <input
-          type="text"
-          id="andar-input"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          placeholder="Somente números">
+        <input type="text" id="andar-input" inputmode="numeric" pattern="[0-9]*" placeholder="Somente números">
       </div>
     </div>
 
-    <!-- H -> I -->
-    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
+    <!-- NOVO: botões acima do Resultado da consulta -->
+    <div class="consulta-actions">
+      <button type="button" onclick="consultarDados()">Consultar</button>
+      <button type="button" onclick="registrarMovimentacaoUI()">Registrar</button>
+    </div>
 
-    <!-- Descrição em PT -->
+    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
     <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly>
 
     <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly>
