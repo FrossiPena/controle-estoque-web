@@ -1,4 +1,4 @@
-/* v3.1 - Oculta campo3 e campo4 + adiciona layout para LOC/Rua/Andar */
+/* v3.3 - Layout para botões Consultar/Registrar acima do Resultado da consulta */
 
 body {
   font-family: Arial, sans-serif;
@@ -16,14 +16,12 @@ body {
   box-sizing: border-box;
 }
 
-h1 {
-  margin-top: 0;
-  text-align: center;
-}
+h1 { margin-top: 0; text-align: center; }
 
 .scanner-buttons,
 .buttons,
-.debug-actions {
+.debug-actions,
+.consulta-actions {
   display: flex;
   gap: 10px;
   justify-content: center;
@@ -53,13 +51,14 @@ input, textarea, select {
   gap: 8px;
 }
 
-/* Hide solicitado */
 #campo3,
 #campo4 {
   display: none;
 }
 
-/* NOVO: bloco de localização */
+.campo1-ok { color: #000; }
+.campo1-bad { color: #c00000; }
+
 .loc-fields {
   margin-top: 8px;
   padding: 10px;
@@ -75,20 +74,12 @@ input, textarea, select {
   margin: 8px 0;
 }
 
-.loc-row label {
-  font-weight: bold;
-}
+.loc-row label { font-weight: bold; }
 
-.debug-wrap {
-  margin-top: 14px;
-}
-
+.debug-wrap { margin-top: 14px; }
 .debug-wrap label {
   display: block;
   font-weight: bold;
   margin-bottom: 6px;
 }
-
-#debug-log {
-  font-family: Consolas, monospace;
-}
+#debug-log { font-family: Consolas, monospace; }
