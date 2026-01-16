@@ -1,6 +1,6 @@
-// v3.1 - Version bump + campos LOC/Rua/Andar no HTML (JS mantém leitura; adiciona sanitização numérica)
+// v3.3 - Botões Consultar/Registrar: consultarDados() e registrarMovimentacaoUI()
 
-const APP_VERSION = "v3.1";
+const APP_VERSION = "v3.3";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -23,7 +23,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!el) return;
     el.addEventListener("input", () => {
       const before = el.value;
-      const after = before.replace(/\D+/g, ""); // remove tudo que não é número
+      const after = before.replace(/\D+/g, "");
       if (before !== after) {
         el.value = after;
         logDebug(`${label}: removidos caracteres não numéricos.`);
@@ -34,6 +34,19 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
 });
+
+function setCampo1CorPorTamanho(valor) {
+  const el = document.getElementById("campo1");
+  if (!el) return;
+
+  el.classList.remove("campo1-ok", "campo1-bad");
+  const len = (valor || "").length;
+
+  if (len === 9) el.classList.add("campo1-ok");
+  else el.classList.add("campo1-bad");
+
+  logDebug(`Validação campo1: "${valor}" (len=${len}) => ${len === 9 ? "OK" : "ERRO"}`);
+}
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
@@ -117,13 +130,38 @@ function processarQRCode(qrCodeMessage) {
   const parte1Original = String(partes[1]).trim();
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
-  partes[1] = parte1Limpo;
 
   document.getElementById("codigo-lido").value = qrCodeMessage;
-  document.getElementById("campo1").value = parte0;
-  document.getElementById("campo2").value = parte1Limpo;
-  document.getElementById("campo3").value = partes[2] || "";
-  document.getElementById("campo4").value = partes[3] || "";
+
+  const elCampo1 = document.getElementById("campo1");
+  const elCampo2 = document.getElementById("campo2");
+  const elCampo3 = document.getElementById("campo3");
+  const elCampo4 = document.getElementById("campo4");
+
+  if (elCampo1) elCampo1.value = parte0;
+  if (elCampo2) elCampo2.value = parte1Limpo;
+  if (elCampo3) elCampo3.value = partes[2] || "";
+  if (elCampo4) elCampo4.value = partes[3] || "";
+
+  setCampo1CorPorTamanho(parte0);
+
+  logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
+
+  // Após leitura, dispara a mesma rotina do botão Consultar
+  consultarDados();
+}
+
+function consultarDados() {
+  const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
+
+  const parte0 = (document.getElementById("campo1")?.value || "").trim();
+  let parte1 = (document.getElementById("campo2")?.value || "").trim();
+
+  // normaliza parte1 (remove zeros à esquerda) mesmo em consulta manual
+  const parte1Original = parte1;
+  parte1 = parte1.replace(/^0+/, "");
+  if (parte1 === "") parte1 = "0";
+  if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
 
   const elI = document.getElementById("resultado-google");
   const elGruas = document.getElementById("gruas-aplicaveis");
@@ -135,12 +173,20 @@ function processarQRCode(qrCodeMessage) {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
-  logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
+  if (!parte0) {
+    logDebug("Consultar: campo1 vazio. Nada a consultar.");
+    if (elI) elI.value = "Não encontrado";
+    if (elGruas) elGruas.value = "Não encontrado";
+    if (elExata) elExata.value = "Não encontrado";
+    if (elDescPT) elDescPT.value = "Não encontrado";
+    return;
+  }
 
-  if (fetchStarted) { logDebug("Fetch bloqueado (já iniciado)."); return; }
+  setCampo1CorPorTamanho(parte0);
+  logDebug(`Consultar: parte0=${parte0} | parte1=${parte1} (original=${parte1Original})`);
+
+  // Evita flood: permite nova consulta sempre, mas registra no log
   fetchStarted = true;
-
-  const endpoint = "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
   const urlI = `${endpoint}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
@@ -165,14 +211,13 @@ function processarQRCode(qrCodeMessage) {
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
       if (elGruas) elGruas.value = texto;
       logDebug("Gruas aplicáveis (texto final): " + texto);
-      setTimeout(()=>{ const el2=document.getElementById("gruas-aplicaveis"); if(el2&&el2.value!==texto){ el2.value=texto; logDebug("Gruas reescrito após delay.");}}, 50);
     } else {
       if (elGruas) elGruas.value = "Não encontrado";
       logDebug("Gruas: resposta inválida/sem ok");
     }
   }).catch(err=>{ if (elGruas) elGruas.value="Erro na consulta"; logDebug("Erro Gruas: " + err); });
 
-  const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1Limpo)}`;
+  const urlExata = `${endpoint}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
   logDebug("GET Correspondência exata (H&K->M): " + urlExata);
   fetch(urlExata).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Exata raw: " + raw);
@@ -202,6 +247,18 @@ function processarQRCode(qrCodeMessage) {
   }).catch(err=>{ if (elDescPT) elDescPT.value="Erro na consulta"; logDebug("Erro Descrição PT: " + err); });
 }
 
+function registrarMovimentacaoUI() {
+  // Placeholder: você ainda não definiu "entrada/saída" nesse botão.
+  // Podemos evoluir para abrir um modal, ou registrar conforme um toggle.
+  const parte0 = (document.getElementById("campo1")?.value || "").trim();
+  const parte1 = (document.getElementById("campo2")?.value || "").trim();
+  const loc = (document.getElementById("loc-select")?.value || "").trim();
+  const rua = (document.getElementById("rua-input")?.value || "").trim();
+  const andar = (document.getElementById("andar-input")?.value || "").trim();
+
+  logDebug(`Registrar (botão novo): parte0=${parte0} parte1=${parte1} loc=${loc} rua=${rua} andar=${andar}`);
+}
+
 function registrarMovimentacao(tipo) {
   const manual = document.getElementById("manual-input").value.trim();
   const lido = document.getElementById("codigo-lido").value.trim();
@@ -213,5 +270,4 @@ function registrarMovimentacao(tipo) {
   const andar = (document.getElementById("andar-input")?.value || "").trim();
 
   logDebug(`Registrando ${tipo}: ${codigo} | loc=${loc} rua=${rua} andar=${andar}`);
-  // POST (quando ativar)
 }
