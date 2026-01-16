@@ -1,4 +1,4 @@
-<!-- v2.0 - Adiciona campo 'Descrição Português' abaixo de 'Resultado da consulta' -->
+<!-- v3.1 - Adiciona campos LOC/Rua/Andar; mantém IDs campo1..4; campo3 e campo4 serão ocultos via CSS -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -29,10 +29,46 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
     </div>
 
+    <!-- NOVO: Localização (LOC / Rua / Andar) -->
+    <div class="loc-fields">
+      <div class="loc-row">
+        <label for="loc-select">LOC</label>
+        <select id="loc-select">
+          <option value="" selected>Selecione (1 a 6)</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </div>
+
+      <div class="loc-row">
+        <label for="rua-input">Rua</label>
+        <input
+          type="text"
+          id="rua-input"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          placeholder="Somente números">
+      </div>
+
+      <div class="loc-row">
+        <label for="andar-input">Andar</label>
+        <input
+          type="text"
+          id="andar-input"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          placeholder="Somente números">
+      </div>
+    </div>
+
     <!-- H -> I -->
     <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
 
-    <!-- NOVO: descrição em PT -->
+    <!-- Descrição em PT -->
     <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly>
 
     <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly>
@@ -60,4 +96,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-
