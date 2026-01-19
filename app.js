@@ -463,7 +463,7 @@ async function deletarLinhaInventarioUI() {
     let jDel = null;
     try { jDel = JSON.parse(rawDel); } catch {}
 
-    if (jDel && jDel.ok && jDel.deleted) {
+    if (jDel && jDel.ok && jDel.cleared) {
       if (status) status.innerText = `Linha ${row} deletada com sucesso.`;
       if (txtLin) txtLin.value = `Linha ${row} deletada.`;
       logDebug("Delete OK.");
@@ -476,3 +476,4 @@ async function deletarLinhaInventarioUI() {
     logDebug("Erro delete: " + e);
   }
 }
+
