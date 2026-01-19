@@ -1,4 +1,4 @@
-/* v3.4 - Checkbox GPS inline ao lado do botão Registrar */
+/* v3.5 - Layout linha_consulta + Consultar/Deletar + txt_lin */
 
 body {
   font-family: Arial, sans-serif;
@@ -98,3 +98,32 @@ input, textarea, select {
 }
 #debug-log { font-family: Consolas, monospace; }
 
+/* NOVO: Linha consulta + botões em uma linha */
+.linha-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 6px;
+}
+
+.linha-actions-left label {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.linha-actions-left input {
+  margin: 0;
+}
+
+.linha-actions-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+#txt_lin {
+  white-space: nowrap; /* garante 1 linha visual */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
