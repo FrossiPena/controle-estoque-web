@@ -29,19 +29,29 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly>
     </div>
 
-    <div class="loc-fields">
-      <div class="loc-row">
-        <label for="loc-select">Pátio</label>
-        <select id="loc-select">
-          <option value="" selected>Selecione (1 a 6)</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-        </select>
-      </div>
+<!-- v3.8 - adiciona campo NumInv (Inventário) -->
+<div class="loc-fields">
+
+  <div class="loc-row">
+    <label for="numinv-input">Inventário</label>
+    <input id="numinv-input" type="text" inputmode="numeric" placeholder="Somente números">
+  </div>
+
+  <div class="loc-row">
+    <label for="loc-select">Pátio</label>
+    <select id="loc-select">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+    </select>
+  </div>
+
+  <!-- ... rua / andar continuam abaixo ... -->
+</div>
+
 
       <div class="loc-row">
         <label for="rua-input">Rua</label>
@@ -94,4 +104,5 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
