@@ -7,7 +7,8 @@ const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
 const ENDPOINT_REGISTRO =
-  "https://script.google.com/macros/s/AKfycbzKq_E4NTXZQ0LhgLAC8CNa_zteMCdOqdiSrauNS4zApyW7un0vkaWgsA9j8bo8Qd03/exec";
+  "https://script.google.com/macros/s/AKfycbzvE45zfPWrCMCKRBRTkBitwSvE0XSLBjxp1ZVeBW0ASGPolGugtDUorcbr3seAAROp/exec";
+
 
 let html5QrCode;
 let scannerRunning = false;
@@ -367,3 +368,4 @@ async function registrarMovimentacaoUI() {
     logDebug("Erro Registrar: " + err);
   }
 }
+
