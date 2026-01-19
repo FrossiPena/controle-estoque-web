@@ -1,7 +1,7 @@
-// v3.8 - NumInv (Inventário): adiciona campo numinv-input no frontend e envia para log_mov (Inventário)
+// v3.81 - NumInv (Inventário): adiciona campo numinv-input no frontend e envia para log_mov (Inventário)
 // Mantém separação: ENDPOINT_CONSULTA (Consolidado) vs ENDPOINT_REGISTRO (Inventário)
 
-const APP_VERSION = "v3.8";
+const APP_VERSION = "v3.81";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
@@ -368,4 +368,5 @@ async function registrarMovimentacaoUI() {
     logDebug("Erro Registrar: " + err);
   }
 }
+
 
