@@ -1,89 +1,54 @@
-<!-- Fernando Rossi v3.84 - Linha Inventário: linha_consulta + Consultar/Deletar + txt_lin (1 linha) -->
+<!-- index.html - v3.83 (reordenação: bloco LINHA abaixo de Consultar/Registrar/GPS) -->
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Controle de Estoque - QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Controle de Estoque</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
+
 <body>
   <div class="container">
     <h1>Controle de Estoque</h1>
 
+    <!-- Botões de controle do scanner -->
     <div class="scanner-buttons">
-      <button type="button" onclick="iniciarLeitor()">Iniciar leitura</button>
-      <button type="button" onclick="pararLeitor()">Parar leitura</button>
+      <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
+      <button type="button" onclick="pararLeitor()">Parar Leitura</button>
     </div>
 
-    <div id="qr-reader" style="width:100%;"></div>
+    <!-- Área de leitura do QR Code -->
+    <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+    <p id="qr-result">Aguardando leitura...</p>
 
-    <label for="codigo-lido"><b>Código lido</b></label>
-    <input type="text" id="codigo-lido" placeholder="Texto completo do QR lido" readonly>
+    <!-- TextBox com leitura automática -->
+    <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
 
+    <!-- Campos parseados -->
     <div class="parsed-fields">
-      <input type="text" id="campo1" placeholder="Codigo 9">
-      <input type="text" id="campo2" placeholder="Codigo Individual">
-      <input type="text" id="campo3" placeholder="Campo 3">
-      <input type="text" id="campo4" placeholder="Campo 4">
+      <input type="text" id="campo1" placeholder="Codigo 9" />
+      <input type="text" id="campo2" placeholder="Codigo Individual" />
+      <input type="text" id="campo3" placeholder="Campo 3" readonly />
+      <input type="text" id="campo4" placeholder="Campo 4" readonly />
     </div>
 
-    <!-- NOVO: Código C -->
-    <label for="codigoC-input"><b>Codigo C - apenas numeros</b></label>
-    <input type="text" id="codigoC-input" placeholder="Ex: 41002336000 (somente números)">
+    <!-- Código C -->
+    <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
 
-    <!-- NOVO: Linha Consulta (Inventário) -->
-    <div class="linha-actions">
-      <div class="linha-actions-left">
-        <label for="linha_consulta"><b>Linha</b></label>
-        <input type="text" id="linha_consulta" placeholder="Ex: 11" maxlength="3">
-      </div>
-
-      <div class="linha-actions-buttons">
-        <button type="button" name="btn_consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
-        <button type="button" name="btn_dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
-      </div>
+    <!-- NumInv -->
+    <div class="loc-row">
+      <label for="numinv-input">Inventário</label>
+      <input type="text" id="numinv-input" placeholder="NumInv (apenas números)" />
     </div>
 
-    <input type="text" name="txt_lin" id="txt_lin" placeholder="Resultado da linha consultada" readonly>
-
-    <!-- Ações principais -->
-    <div class="consulta-actions">
-      <button type="button" onclick="consultarDados()">Consultar</button>
-      <button type="button" onclick="registrarMovimentacaoUI()">Registrar</button>
-
-      <label class="gps-inline">
-        <input type="checkbox" id="gps-check">
-        GPS
-      </label>
-    </div>
-
-    <div id="status-msg" style="text-align:center; margin: 6px 0;"></div>
-
-    <label for="resultado-google"><b>Resultado da consulta</b></label>
-    <input type="text" id="resultado-google" placeholder="Retorno da coluna I (Consolidado)" readonly>
-
-    <label for="descricao-pt"><b>Descrição Portugues</b></label>
-    <input type="text" id="descricao-pt" placeholder="Retorno (Relação de Produtos)" readonly>
-
-    <label for="gruas-aplicaveis"><b>Gruas aplicáveis</b></label>
-    <textarea id="gruas-aplicaveis" rows="3" readonly placeholder="Modelos (C) e Aplicações (M)"></textarea>
-
-    <label for="correspondencia-exata"><b>Correspondência exata</b></label>
-    <input type="text" id="correspondencia-exata" readonly>
-
-    <!-- Inventário -->
+    <!-- Localização -->
     <div class="loc-fields">
-      <div class="loc-row">
-        <label for="numinv-input">Inventário</label>
-        <input type="text" id="numinv-input" placeholder="NumInv (somente números)">
-      </div>
-
       <div class="loc-row">
         <label for="loc-select">Pátio</label>
         <select id="loc-select">
-          <option value="">-</option>
+          <option value="">Selecione...</option>
           <option value="1">1</option>
           <option value="2">2</option>
           <option value="3">3</option>
@@ -95,22 +60,72 @@
 
       <div class="loc-row">
         <label for="rua-input">Rua</label>
-        <input type="text" id="rua-input" placeholder="Apenas números">
+        <input type="text" id="rua-input" placeholder="Apenas números" />
       </div>
 
       <div class="loc-row">
         <label for="andar-input">Andar</label>
-        <input type="text" id="andar-input" placeholder="Apenas números">
+        <input type="text" id="andar-input" placeholder="Apenas números" />
       </div>
     </div>
 
+    <!-- AÇÕES PRINCIPAIS (ficam acima do bloco LINHA, como solicitado) -->
+    <div class="consulta-actions">
+      <button type="button" id="btn-consultar" onclick="consultarDados()">Consultar</button>
+
+      <button type="button" id="btn-registrar" onclick="registrarMovimentacaoUI()">Registrar</button>
+
+      <label class="gps-inline">
+        <input type="checkbox" id="gps-check" />
+        GPS
+      </label>
+    </div>
+
+    <!-- BLOCO LINHA (AGORA ABAIXO DOS BOTÕES Consultar/Registrar/GPS) -->
+    <div class="linha-tools">
+      <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center;">
+        <input
+          type="text"
+          id="linha-consulta"
+          placeholder="linha_consulta (ex.: 11)"
+          maxlength="3"
+          style="flex: 1;"
+        />
+
+        <button type="button" id="btn-consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
+        <button type="button" id="btn-dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
+      </div>
+
+      <input
+        type="text"
+        id="txt-lin"
+        placeholder="Resultado da linha consultada"
+        readonly
+      />
+    </div>
+
+    <!-- Resultado da consulta (H->I) -->
+    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
+
+    <!-- Descrição Português -->
+    <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly />
+
+    <!-- Gruas aplicáveis -->
+    <textarea id="gruas-aplicaveis" placeholder="Gruas aplicáveis" readonly></textarea>
+
+    <!-- Correspondência exata -->
+    <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
+
+    <p id="status-msg"></p>
+
+    <!-- Debug -->
     <div class="debug-wrap">
       <label for="debug-log">Debug</label>
       <textarea id="debug-log" rows="10" readonly></textarea>
 
       <div class="debug-actions">
-        <button type="button" onclick="limparDebug()">Limpar debug</button>
-        <button type="button" onclick="copiarDebug()">Copiar debug</button>
+        <button type="button" onclick="limparDebug()">Limpar log</button>
+        <button type="button" onclick="copiarDebug()">Copiar log</button>
       </div>
     </div>
   </div>
