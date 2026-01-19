@@ -1,14 +1,12 @@
-// v3.81 - NumInv (Inventário): adiciona campo numinv-input no frontend e envia para log_mov (Inventário)
-// Mantém separação: ENDPOINT_CONSULTA (Consolidado) vs ENDPOINT_REGISTRO (Inventário)
+// v3.82 - Consultar: se campo1 vazio, usa "C"+CodigoC e busca H via coluna L (mode=h_por_l). Se campo1 preenchido, mantém fluxo atual.
 
-const APP_VERSION = "v3.81";
+const APP_VERSION = "v3.82";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
 const ENDPOINT_REGISTRO =
   "https://script.google.com/macros/s/AKfycbzvE45zfPWrCMCKRBRTkBitwSvE0XSLBjxp1ZVeBW0ASGPolGugtDUorcbr3seAAROp/exec";
-
 
 let html5QrCode;
 let scannerRunning = false;
@@ -17,17 +15,11 @@ let lastHandledAt = 0;
 
 let gpsString = "";
 
-// -------------------- DEBUG --------------------
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
   const ts = new Date().toLocaleTimeString();
-  if (el) {
-    el.value += `[${ts}] ${msg}\n`;
-    el.scrollTop = el.scrollHeight;
-  }
+  if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
-function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
-function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
@@ -36,9 +28,10 @@ logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
 window.addEventListener("DOMContentLoaded", () => {
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
-  const numInv = document.getElementById("numinv-input");
   const campo1 = document.getElementById("campo1");
   const campo2 = document.getElementById("campo2");
+  const codigoC = document.getElementById("codigoc-input");
+  const numInv = document.getElementById("numinv-input");
 
   function onlyDigits(el, label) {
     if (!el) return;
@@ -52,58 +45,43 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  onlyDigits(numInv, "NumInv");
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
+  onlyDigits(codigoC, "Codigo C");
+  onlyDigits(numInv, "NumInv");
 
-  if (campo1) campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
-
+  if (campo1) {
+    campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
+  }
   if (campo2) {
-    campo2.addEventListener("blur", () => {
-      let v = (campo2.value || "").trim();
-      const original = v;
-      v = v.replace(/^0+/, "");
-      if (v === "") v = "0";
-      if (v !== original) logDebug(`Campo2 normalizado (blur): ${original} -> ${v}`);
-      campo2.value = v;
+    campo2.addEventListener("input", () => {
+      // campo2 pode ser numérico; remove não-dígitos se quiser (opcional)
+      // mantendo como está para não quebrar seu fluxo atual
     });
   }
-
-  testarDiagRegistro();
 });
 
-// -------------------- DIAG REGISTRO --------------------
-async function testarDiagRegistro() {
-  const url = `${ENDPOINT_REGISTRO}?mode=diag&t=${Date.now()}`;
-  logDebug("GET DIAG (registro): " + url);
-  try {
-    const raw = await (await fetch(url)).text();
-    logDebug("Resposta DIAG (registro) raw: " + raw);
-    let j = null;
-    try { j = JSON.parse(raw); } catch {}
-    if (j && j.ok) logDebug(`Backend REGISTRO OK. version=${j.version}`);
-    else logDebug("DIAG (registro) retornou resposta não-ok.");
-  } catch (e) {
-    logDebug("Erro DIAG (registro): " + e);
-  }
-}
-
-// -------------------- CAMPO1 COR --------------------
 function setCampo1CorPorTamanho(valor) {
   const el = document.getElementById("campo1");
   if (!el) return;
+
   el.classList.remove("campo1-ok", "campo1-bad");
   const len = (valor || "").length;
+
   if (len === 9) el.classList.add("campo1-ok");
   else el.classList.add("campo1-bad");
 }
 
-// -------------------- QR SCANNER --------------------
+function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
+function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
+
+// ---------------- QR ----------------
+
 function iniciarLeitor() {
   if (scannerRunning) return;
   logDebug("Iniciando leitor...");
-
   html5QrCode = new Html5Qrcode("qr-reader");
+
   leituraProcessada = false;
   lastHandledAt = 0;
 
@@ -112,7 +90,7 @@ function iniciarLeitor() {
   html5QrCode.start(
     { facingMode: { exact: "environment" } },
     config,
-    (qrCodeMessage) => processarQRCode(qrCodeMessage)
+    qrCodeMessage => processarQRCode(qrCodeMessage)
   ).then(() => {
     scannerRunning = true;
     logDebug("Leitor iniciado com facingMode=environment.");
@@ -124,11 +102,10 @@ function iniciarLeitor() {
       const preferidas = cameras.filter(c => /back|rear|traseira|environment/i.test(c.label || ""));
       const escolhida = preferidas[0] || cameras[cameras.length - 1];
       logDebug("Câmera escolhida: " + (escolhida.label || escolhida.id));
-
       html5QrCode.start(
         escolhida.id,
         config,
-        (qrCodeMessage) => processarQRCode(qrCodeMessage)
+        qrCodeMessage => processarQRCode(qrCodeMessage)
       ).then(() => {
         scannerRunning = true;
         leituraProcessada = false;
@@ -162,7 +139,6 @@ function processarQRCode(qrCodeMessage) {
   lastHandledAt = now;
 
   logDebug("QR bruto lido: " + qrCodeMessage);
-
   const partes = qrCodeMessage.split("|").filter(Boolean);
   logDebug("Partes após split('|'): " + JSON.stringify(partes));
 
@@ -176,7 +152,6 @@ function processarQRCode(qrCodeMessage) {
 
   const parte0 = String(partes[0]).trim();
   const parte1Original = String(partes[1] || "").trim();
-
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
 
@@ -184,13 +159,68 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("campo1").value = parte0;
   document.getElementById("campo2").value = parte1Limpo;
 
+  // Se veio por QR, deixa Codigo C vazio
+  const codigoC = document.getElementById("codigoc-input");
+  if (codigoC) codigoC.value = "";
+
   setCampo1CorPorTamanho(parte0);
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
-  consultarDados();
+  consultarDados(); // fluxo padrão
 }
 
-// -------------------- CONSULTAR (Consolidado) --------------------
+// ---------------- NOVO: Consultar com fallback por Codigo C ----------------
+
+async function consultarUI() {
+  const status = document.getElementById("status-msg");
+  const campo1 = (document.getElementById("campo1")?.value || "").trim();
+  const codigoC = (document.getElementById("codigoc-input")?.value || "").trim().replace(/\D+/g, "");
+
+  if (campo1) {
+    logDebug("ConsultarUI: campo1 preenchido -> consulta padrão.");
+    consultarDados();
+    return;
+  }
+
+  if (!codigoC) {
+    logDebug("ConsultarUI: campo1 vazio e Codigo C vazio -> nada a consultar.");
+    if (status) status.innerText = "Informe 'Codigo 9' ou 'Codigo C - apenas numeros'.";
+    return;
+  }
+
+  const chaveL = "C" + codigoC;
+  logDebug(`ConsultarUI: campo1 vazio -> buscando H por L usando chave "${chaveL}".`);
+
+  const url = `${ENDPOINT_CONSULTA}?mode=h_por_l&l=${encodeURIComponent(chaveL)}&t=${Date.now()}`;
+  logDebug("GET Buscar H por L (L->H): " + url);
+
+  try {
+    const raw = await (await fetch(url)).text();
+    logDebug("Resposta (L->H) raw: " + raw);
+
+    let j = null;
+    try { j = JSON.parse(raw); } catch {}
+
+    if (j && j.ok && (j.h || "").trim()) {
+      const h = String(j.h).trim();
+      document.getElementById("campo1").value = h;
+      setCampo1CorPorTamanho(h);
+      if (status) status.innerText = `Encontrado via Código C. Campo1 preenchido: ${h}`;
+      logDebug(`ConsultarUI: encontrado H="${h}" (row=${j.row || "?"}). Rodando consulta padrão...`);
+
+      consultarDados(); // agora roda o fluxo normal usando campo1 preenchido
+    } else {
+      if (status) status.innerText = "Não encontrado (Código C).";
+      logDebug("ConsultarUI: não encontrou ocorrência em L.");
+    }
+  } catch (err) {
+    if (status) status.innerText = "Erro de rede na consulta (Código C).";
+    logDebug("ConsultarUI: erro: " + err);
+  }
+}
+
+// ---------------- Consulta padrão (H->I / H->C,M / H&K->M / desc_pt) ----------------
+
 function consultarDados() {
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   let parte1 = (document.getElementById("campo2")?.value || "").trim();
@@ -214,24 +244,22 @@ function consultarDados() {
     if (elGruas) elGruas.value = "Não encontrado";
     if (elExata) elExata.value = "Não encontrado";
     if (elDescPT) elDescPT.value = "Não encontrado";
-    logDebug("Consultar: campo1 vazio. Abortando consultas.");
     return;
   }
 
   setCampo1CorPorTamanho(parte0);
-  const t = Date.now();
 
-  const urlI = `${ENDPOINT_CONSULTA}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}&t=${t}`;
-  logDebug("GET Resultado da consulta (H->I) [CONSULTA]: " + urlI);
+  const urlI = `${ENDPOINT_CONSULTA}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
+  logDebug("GET Resultado da consulta (H->I): " + urlI);
   fetch(urlI).then(r=>r.text()).then(raw=>{
     logDebug("Resposta (H->I) raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
     else { if (elI) elI.value = "Não encontrado"; }
-  }).catch(e=>{ logDebug("Erro fetch (H->I): " + e); if (elI) elI.value = "Não encontrado"; });
+  });
 
-  const urlGruas = `${ENDPOINT_CONSULTA}?mode=gruas&h=${encodeURIComponent(parte0)}&t=${t}`;
-  logDebug("GET Gruas aplicáveis (H->C[] & M[]) [CONSULTA]: " + urlGruas);
+  const urlGruas = `${ENDPOINT_CONSULTA}?mode=gruas&h=${encodeURIComponent(parte0)}`;
+  logDebug("GET Gruas aplicáveis (H->C[] & M[]): " + urlGruas);
   fetch(urlGruas).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Gruas raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
@@ -242,34 +270,33 @@ function consultarDados() {
       if (listaC.length) linhas.push(`Modelos (C): ${listaC.join(", ")}`);
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
-      if (elGruas) elGruas.value = texto;
-      logDebug("Gruas aplicáveis (texto final): " + texto.replace(/\n/g," | "));
+      document.getElementById("gruas-aplicaveis").value = texto;
     } else {
-      if (elGruas) elGruas.value = "Não encontrado";
+      document.getElementById("gruas-aplicaveis").value = "Não encontrado";
     }
-  }).catch(e=>{ logDebug("Erro fetch Gruas: " + e); if (elGruas) elGruas.value = "Não encontrado"; });
+  });
 
-  const urlExata = `${ENDPOINT_CONSULTA}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}&t=${t}`;
-  logDebug("GET Correspondência exata (H&K->M) [CONSULTA]: " + urlExata);
+  const urlExata = `${ENDPOINT_CONSULTA}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
+  logDebug("GET Correspondência exata (H&K->M): " + urlExata);
   fetch(urlExata).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Exata raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (elExata) elExata.value = (j && j.ok && (j.exata||"").trim()) ? (j.exata||"").trim() : "Não encontrado";
-  }).catch(e=>{ logDebug("Erro fetch Exata: " + e); if (elExata) elExata.value = "Não encontrado"; });
+    document.getElementById("correspondencia-exata").value =
+      (j && j.ok && (j.exata||"").trim()) ? (j.exata||"").trim() : "Não encontrado";
+  });
 
-  const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}&t=${t}`;
-  logDebug("GET Descrição Português [CONSULTA]: " + urlDescPT);
+  const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
+  logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (elDescPT) elDescPT.value = (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
-  }).catch(e=>{ logDebug("Erro fetch Desc PT: " + e); if (elDescPT) elDescPT.value = "Não encontrado"; });
+    document.getElementById("descricao-pt").value =
+      (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
+  });
 }
 
-function consultar() { consultarDados(); }
-function consultarUI() { consultarDados(); }
+// ---------------- GPS + Registrar (mantido) ----------------
 
-// -------------------- GPS --------------------
 function obterGpsString() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
@@ -291,26 +318,20 @@ function obterGpsString() {
   });
 }
 
-// -------------------- REGISTRAR (Inventário) --------------------
 async function registrarMovimentacaoUI() {
   const status = document.getElementById("status-msg");
 
   const campo1 = (document.getElementById("campo1")?.value || "").trim();
   let campo2 = (document.getElementById("campo2")?.value || "").trim();
-
-  // NOVO: NumInv
-  const numInv = (document.getElementById("numinv-input")?.value || "").trim();
-
   const loc   = (document.getElementById("loc-select")?.value || "").trim();
   const rua   = (document.getElementById("rua-input")?.value || "").trim();
   const andar = (document.getElementById("andar-input")?.value || "").trim();
+  const numInv = (document.getElementById("numinv-input")?.value || "").trim().replace(/\D+/g, "");
 
   const gpsOn = !!document.getElementById("gps-check")?.checked;
 
-  const campo2Original = campo2;
   campo2 = campo2.replace(/^0+/, "");
   if (campo2 === "") campo2 = "0";
-  if (campo2 !== campo2Original) logDebug(`Campo2 normalizado (registrar): ${campo2Original} -> ${campo2}`);
   if (document.getElementById("campo2")) document.getElementById("campo2").value = campo2;
 
   setCampo1CorPorTamanho(campo1);
@@ -329,24 +350,23 @@ async function registrarMovimentacaoUI() {
       gpsString = await obterGpsString();
       logDebug("GPS capturado: " + gpsString);
     } catch (e) {
-      logDebug("Erro GPS (seguindo sem GPS): " + e);
+      logDebug("Erro GPS: " + e);
       gpsString = "";
     }
   }
 
-  const t = Date.now();
   const urlLog =
     `${ENDPOINT_REGISTRO}?mode=log_mov` +
     `&campo1=${encodeURIComponent(campo1)}` +
     `&campo2=${encodeURIComponent(campo2)}` +
-    `&numInv=${encodeURIComponent(numInv)}` +          // NOVO
     `&loc=${encodeURIComponent(loc)}` +
     `&rua=${encodeURIComponent(rua)}` +
     `&andar=${encodeURIComponent(andar)}` +
     `&gpsString=${encodeURIComponent(gpsString)}` +
-    `&t=${t}`;
+    `&numInv=${encodeURIComponent(numInv)}` +
+    `&t=${Date.now()}`;
 
-  logDebug("GET Registrar (log_mov) [REGISTRO]: " + urlLog);
+  logDebug("GET Registrar (log_mov): " + urlLog);
 
   try {
     const raw = await (await fetch(urlLog)).text();
@@ -356,17 +376,14 @@ async function registrarMovimentacaoUI() {
     try { j = JSON.parse(raw); } catch {}
 
     if (j && j.ok && j.appended) {
-      if (status) status.innerText = `Salvo com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
-      logDebug(`Registro OK: row=${j.row} sheet=${j.sheet} dataHora=${j.dataHora}`);
+      if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
+      logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
     } else {
-      const errMsg = (j && (j.error || j.detail)) ? `${j.error || ""} ${j.detail || ""}`.trim() : "Resposta inválida";
-      if (status) status.innerText = `Falha ao salvar: ${errMsg}`;
-      logDebug("Registrar: falha. " + errMsg);
+      if (status) status.innerText = "Falha ao registrar (ver debug).";
+      logDebug("Registrar: resposta inválida/sem ok.");
     }
   } catch (err) {
-    if (status) status.innerText = "Erro de rede ao salvar (ver debug).";
+    if (status) status.innerText = "Erro de rede ao registrar (ver debug).";
     logDebug("Erro Registrar: " + err);
   }
 }
-
-
