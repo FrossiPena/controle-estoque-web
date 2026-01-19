@@ -1,16 +1,11 @@
-// v3.7 - Separação de endpoints: CONSULTA (Consolidado) vs REGISTRO (Inventário)
-// - Consulta usa endpoint antigo (bound ao Consolidado): i_por_h, gruas, exata, desc_pt
-// - Registro usa endpoint novo (Inventário): log_mov (não depende do Consolidado)
-// Inclui debug de endpoints e diag (somente para o endpoint de registro, que você validou com v3.6)
+// v3.8 - NumInv (Inventário): adiciona campo numinv-input no frontend e envia para log_mov (Inventário)
+// Mantém separação: ENDPOINT_CONSULTA (Consolidado) vs ENDPOINT_REGISTRO (Inventário)
 
-const APP_VERSION = "v3.7";
+const APP_VERSION = "v3.8";
 
-// Endpoint antigo (CONSULTA) - este é o que já respondia corretamente H->I, gruas, exata, desc_pt
-// (mantive exatamente o que você estava usando no seu app.js v3.5)
 const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 
-// Endpoint novo (REGISTRO) - este é o que você validou: mode=diag -> version v3.6 e log_mov grava
 const ENDPOINT_REGISTRO =
   "https://script.google.com/macros/s/AKfycbzKq_E4NTXZQ0LhgLAC8CNa_zteMCdOqdiSrauNS4zApyW7un0vkaWgsA9j8bo8Qd03/exec";
 
@@ -30,16 +25,8 @@ function logDebug(msg) {
     el.scrollTop = el.scrollHeight;
   }
 }
-function limparDebug() {
-  const el = document.getElementById("debug-log");
-  if (el) el.value = "";
-}
-function copiarDebug() {
-  const el = document.getElementById("debug-log");
-  if (!el) return;
-  el.select();
-  document.execCommand("copy");
-}
+function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
+function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
@@ -48,6 +35,7 @@ logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
 window.addEventListener("DOMContentLoaded", () => {
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
+  const numInv = document.getElementById("numinv-input");
   const campo1 = document.getElementById("campo1");
   const campo2 = document.getElementById("campo2");
 
@@ -63,6 +51,7 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  onlyDigits(numInv, "NumInv");
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
 
@@ -79,7 +68,6 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Diagnóstico do endpoint de REGISTRO (o novo)
   testarDiagRegistro();
 });
 
@@ -131,10 +119,7 @@ function iniciarLeitor() {
     logDebug("Falhou facingMode=environment, listando câmeras... " + err);
     try {
       const cameras = await Html5Qrcode.getCameras();
-      if (!cameras || !cameras.length) {
-        logDebug("Nenhuma câmera encontrada.");
-        return;
-      }
+      if (!cameras || !cameras.length) { logDebug("Nenhuma câmera encontrada."); return; }
       const preferidas = cameras.filter(c => /back|rear|traseira|environment/i.test(c.label || ""));
       const escolhida = preferidas[0] || cameras[cameras.length - 1];
       logDebug("Câmera escolhida: " + (escolhida.label || escolhida.id));
@@ -168,12 +153,10 @@ function pararLeitor() {
 
 function processarQRCode(qrCodeMessage) {
   const now = Date.now();
-
   if (leituraProcessada || (now - lastHandledAt) < 800) {
     logDebug("Leitura ignorada (debounce ativo).");
     return;
   }
-
   leituraProcessada = true;
   lastHandledAt = now;
 
@@ -188,7 +171,6 @@ function processarQRCode(qrCodeMessage) {
     return;
   }
 
-  // Para evitar múltiplas leituras/GETs repetidos
   pararLeitor();
 
   const parte0 = String(partes[0]).trim();
@@ -236,27 +218,17 @@ function consultarDados() {
   }
 
   setCampo1CorPorTamanho(parte0);
-
   const t = Date.now();
 
-  // 1) H -> I
   const urlI = `${ENDPOINT_CONSULTA}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}&t=${t}`;
   logDebug("GET Resultado da consulta (H->I) [CONSULTA]: " + urlI);
   fetch(urlI).then(r=>r.text()).then(raw=>{
     logDebug("Resposta (H->I) raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (j && j.ok) {
-      const v=(j.resultado||"").trim();
-      if (elI) elI.value = v || "Não encontrado";
-    } else {
-      if (elI) elI.value = "Não encontrado";
-    }
-  }).catch(e=>{
-    logDebug("Erro fetch (H->I): " + e);
-    if (elI) elI.value = "Não encontrado";
-  });
+    if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
+    else { if (elI) elI.value = "Não encontrado"; }
+  }).catch(e=>{ logDebug("Erro fetch (H->I): " + e); if (elI) elI.value = "Não encontrado"; });
 
-  // 2) Gruas (H -> C[] e M[])
   const urlGruas = `${ENDPOINT_CONSULTA}?mode=gruas&h=${encodeURIComponent(parte0)}&t=${t}`;
   logDebug("GET Gruas aplicáveis (H->C[] & M[]) [CONSULTA]: " + urlGruas);
   fetch(urlGruas).then(r=>r.text()).then(raw=>{
@@ -274,37 +246,25 @@ function consultarDados() {
     } else {
       if (elGruas) elGruas.value = "Não encontrado";
     }
-  }).catch(e=>{
-    logDebug("Erro fetch Gruas: " + e);
-    if (elGruas) elGruas.value = "Não encontrado";
-  });
+  }).catch(e=>{ logDebug("Erro fetch Gruas: " + e); if (elGruas) elGruas.value = "Não encontrado"; });
 
-  // 3) Exata (H&K -> M)
   const urlExata = `${ENDPOINT_CONSULTA}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}&t=${t}`;
   logDebug("GET Correspondência exata (H&K->M) [CONSULTA]: " + urlExata);
   fetch(urlExata).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Exata raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (elExata) elExata.value = (j && j.ok && (j.exata||"").trim()) ? (j.exata||"").trim() : "Não encontrado";
-  }).catch(e=>{
-    logDebug("Erro fetch Exata: " + e);
-    if (elExata) elExata.value = "Não encontrado";
-  });
+  }).catch(e=>{ logDebug("Erro fetch Exata: " + e); if (elExata) elExata.value = "Não encontrado"; });
 
-  // 4) Descrição PT (H -> L[16] -> Relação[H] -> B)
   const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}&t=${t}`;
   logDebug("GET Descrição Português [CONSULTA]: " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (elDescPT) elDescPT.value = (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
-  }).catch(e=>{
-    logDebug("Erro fetch Desc PT: " + e);
-    if (elDescPT) elDescPT.value = "Não encontrado";
-  });
+  }).catch(e=>{ logDebug("Erro fetch Desc PT: " + e); if (elDescPT) elDescPT.value = "Não encontrado"; });
 }
 
-// Aliases para compatibilidade com onclicks antigos
 function consultar() { consultarDados(); }
 function consultarUI() { consultarDados(); }
 
@@ -336,6 +296,10 @@ async function registrarMovimentacaoUI() {
 
   const campo1 = (document.getElementById("campo1")?.value || "").trim();
   let campo2 = (document.getElementById("campo2")?.value || "").trim();
+
+  // NOVO: NumInv
+  const numInv = (document.getElementById("numinv-input")?.value || "").trim();
+
   const loc   = (document.getElementById("loc-select")?.value || "").trim();
   const rua   = (document.getElementById("rua-input")?.value || "").trim();
   const andar = (document.getElementById("andar-input")?.value || "").trim();
@@ -374,6 +338,7 @@ async function registrarMovimentacaoUI() {
     `${ENDPOINT_REGISTRO}?mode=log_mov` +
     `&campo1=${encodeURIComponent(campo1)}` +
     `&campo2=${encodeURIComponent(campo2)}` +
+    `&numInv=${encodeURIComponent(numInv)}` +          // NOVO
     `&loc=${encodeURIComponent(loc)}` +
     `&rua=${encodeURIComponent(rua)}` +
     `&andar=${encodeURIComponent(andar)}` +
