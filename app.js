@@ -3,7 +3,7 @@
 const APP_VERSION = "v3.82";
 
 const ENDPOINT_CONSULTA =
-  "https://script.google.com/macros/s/AKfycbwFTBzg19Oehw0rQxFi1oVm31st0MouechBMMhNAHnJrj4nrWJKnikI9vAino2E8a_Q/exec";
+  "https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 //"https://script.google.com/macros/s/AKfycbyJG6k8tLiwSo7wQuWEsS03ASb3TYToR-HBMjOGmUja6b6lJ9rhDNNjcOwWcwvb1MfD/exec";
 const ENDPOINT_REGISTRO =
   "https://script.google.com/macros/s/AKfycbzvE45zfPWrCMCKRBRTkBitwSvE0XSLBjxp1ZVeBW0ASGPolGugtDUorcbr3seAAROp/exec";
@@ -387,4 +387,5 @@ async function registrarMovimentacaoUI() {
     logDebug("Erro Registrar: " + err);
   }
 }
+
 
