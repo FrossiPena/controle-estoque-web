@@ -1,50 +1,95 @@
-<!-- Fernando Rossi - v3.82 - Adiciona input Codigo C (apenas números) e ajusta botão Consultar -->
-
+<!-- Fernando Rossi v3.84 - Linha Inventário: linha_consulta + Consultar/Deletar + txt_lin (1 linha) -->
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Estoque - QR</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
   <div class="container">
     <h1>Controle de Estoque</h1>
 
     <div class="scanner-buttons">
-      <button onclick="iniciarLeitor()">Iniciar Leitura</button>
-      <button onclick="pararLeitor()">Parar Leitura</button>
+      <button type="button" onclick="iniciarLeitor()">Iniciar leitura</button>
+      <button type="button" onclick="pararLeitor()">Parar leitura</button>
     </div>
 
-    <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
-    <p id="qr-result">Aguardando leitura...</p>
+    <div id="qr-reader" style="width:100%;"></div>
 
-    <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly>
+    <label for="codigo-lido"><b>Código lido</b></label>
+    <input type="text" id="codigo-lido" placeholder="Texto completo do QR lido" readonly>
 
     <div class="parsed-fields">
       <input type="text" id="campo1" placeholder="Codigo 9">
-      <!-- NOVO: abaixo do Codigo 9 -->
-      <input type="text" id="codigoc-input" placeholder="Codigo C - apenas numeros">
-
       <input type="text" id="campo2" placeholder="Codigo Individual">
-      <input type="text" id="campo3" placeholder="Campo 3" readonly>
-      <input type="text" id="campo4" placeholder="Campo 4" readonly>
+      <input type="text" id="campo3" placeholder="Campo 3">
+      <input type="text" id="campo4" placeholder="Campo 4">
     </div>
 
+    <!-- NOVO: Código C -->
+    <label for="codigoC-input"><b>Codigo C - apenas numeros</b></label>
+    <input type="text" id="codigoC-input" placeholder="Ex: 41002336000 (somente números)">
+
+    <!-- NOVO: Linha Consulta (Inventário) -->
+    <div class="linha-actions">
+      <div class="linha-actions-left">
+        <label for="linha_consulta"><b>Linha</b></label>
+        <input type="text" id="linha_consulta" placeholder="Ex: 11" maxlength="3">
+      </div>
+
+      <div class="linha-actions-buttons">
+        <button type="button" name="btn_consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
+        <button type="button" name="btn_dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
+      </div>
+    </div>
+
+    <input type="text" name="txt_lin" id="txt_lin" placeholder="Resultado da linha consultada" readonly>
+
+    <!-- Ações principais -->
+    <div class="consulta-actions">
+      <button type="button" onclick="consultarDados()">Consultar</button>
+      <button type="button" onclick="registrarMovimentacaoUI()">Registrar</button>
+
+      <label class="gps-inline">
+        <input type="checkbox" id="gps-check">
+        GPS
+      </label>
+    </div>
+
+    <div id="status-msg" style="text-align:center; margin: 6px 0;"></div>
+
+    <label for="resultado-google"><b>Resultado da consulta</b></label>
+    <input type="text" id="resultado-google" placeholder="Retorno da coluna I (Consolidado)" readonly>
+
+    <label for="descricao-pt"><b>Descrição Portugues</b></label>
+    <input type="text" id="descricao-pt" placeholder="Retorno (Relação de Produtos)" readonly>
+
+    <label for="gruas-aplicaveis"><b>Gruas aplicáveis</b></label>
+    <textarea id="gruas-aplicaveis" rows="3" readonly placeholder="Modelos (C) e Aplicações (M)"></textarea>
+
+    <label for="correspondencia-exata"><b>Correspondência exata</b></label>
+    <input type="text" id="correspondencia-exata" readonly>
+
+    <!-- Inventário -->
     <div class="loc-fields">
       <div class="loc-row">
         <label for="numinv-input">Inventário</label>
-        <input type="text" id="numinv-input" placeholder="NumInv (apenas números)">
+        <input type="text" id="numinv-input" placeholder="NumInv (somente números)">
       </div>
 
       <div class="loc-row">
         <label for="loc-select">Pátio</label>
         <select id="loc-select">
-          <option value="">Selecione</option>
-          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+          <option value="">-</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
         </select>
       </div>
 
@@ -59,32 +104,13 @@
       </div>
     </div>
 
-    <!-- Botões acima do Resultado -->
-    <div class="consulta-actions">
-      <button onclick="consultarUI()">Consultar</button>
-      <button onclick="registrarMovimentacaoUI()">Registrar</button>
-
-      <label class="gps-inline">
-        <input type="checkbox" id="gps-check">
-        GPS
-      </label>
-    </div>
-
-    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly>
-
-    <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly>
-
-    <textarea id="gruas-aplicaveis" placeholder="Gruas aplicáveis" readonly></textarea>
-    <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly>
-
-    <p id="status-msg"></p>
-
     <div class="debug-wrap">
-      <label>Debug</label>
+      <label for="debug-log">Debug</label>
       <textarea id="debug-log" rows="10" readonly></textarea>
+
       <div class="debug-actions">
-        <button onclick="limparDebug()">Limpar</button>
-        <button onclick="copiarDebug()">Copiar</button>
+        <button type="button" onclick="limparDebug()">Limpar debug</button>
+        <button type="button" onclick="copiarDebug()">Copiar debug</button>
       </div>
     </div>
   </div>
@@ -92,4 +118,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-
