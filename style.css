@@ -12,7 +12,7 @@ body {
   margin: 0 auto;
   padding: 16px;
   background: #fff;
-  min-height: 100vh;
+  min-height: fit-content;
   box-sizing: border-box;
 }
 
@@ -97,3 +97,4 @@ input, textarea, select {
   margin-bottom: 6px;
 }
 #debug-log { font-family: Consolas, monospace; }
+
