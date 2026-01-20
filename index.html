@@ -1,4 +1,4 @@
-<!-- index.html - v3.x (reordenação: bloco LINHA abaixo de Consultar/Registrar/GPS) -->
+<!-- index.html - v3.9 (foto por linha no Drive + preview e substituir) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -13,20 +13,17 @@
   <div class="container">
     <h1>Controle de Estoque</h1>
 
-    <!-- Botões de controle do scanner -->
     <div class="scanner-buttons">
       <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
       <button type="button" onclick="pararLeitor()">Parar Leitura</button>
     </div>
 
-    <!-- Área de leitura do QR Code -->
     <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
     <p id="qr-result">Aguardando leitura...</p>
 
-    <!-- TextBox com leitura automática -->
     <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
-<hr class="sep" />
-    <!-- Campos parseados -->
+    <hr class="sep" />
+
     <div class="parsed-fields">
       <input type="text" id="campo1" placeholder="Codigo 9" />
       <input type="text" id="campo2" placeholder="Codigo Individual" />
@@ -34,27 +31,21 @@
       <input type="text" id="campo4" placeholder="Campo 4" readonly />
     </div>
 
-    <!-- Código C -->
     <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
-<hr class="sep" />
-    <!-- NumInv -->
+    <hr class="sep" />
+
     <div class="loc-row">
       <label for="numinv-input">Inventário</label>
       <input type="text" id="numinv-input" placeholder="NumInv (apenas números)" />
     </div>
 
-    <!-- Localização -->
     <div class="loc-fields">
       <div class="loc-row">
         <label for="loc-select">Pátio</label>
         <select id="loc-select">
           <option value="">Selecione...</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
         </select>
       </div>
 
@@ -69,10 +60,8 @@
       </div>
     </div>
 
-    <!-- AÇÕES PRINCIPAIS (ficam acima do bloco LINHA, como solicitado) -->
     <div class="consulta-actions">
       <button type="button" id="btn-consultar" onclick="consultarDados()">Consultar</button>
-
       <button type="button" id="btn-registrar" onclick="registrarMovimentacaoUI()">Registrar</button>
 
       <label class="gps-inline">
@@ -80,8 +69,10 @@
         GPS
       </label>
     </div>
-<hr class="sep" />
-    <!-- BLOCO LINHA (AGORA ABAIXO DOS BOTÕES Consultar/Registrar/GPS) -->
+
+    <hr class="sep" />
+
+    <!-- BLOCO LINHA -->
     <div class="linha-tools">
       <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center;">
         <input
@@ -94,31 +85,33 @@
 
         <button type="button" id="btn-consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
         <button type="button" id="btn-dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
+        <button type="button" id="btn-substfoto" onclick="substituirFotoLinhaUI()">Substituir foto</button>
       </div>
 
+      <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
+
+      <!-- Preview da foto -->
+      <img id="foto-preview" alt="Preview da foto" style="display:none;" />
+
+      <!-- Input oculto para capturar foto (camera traseira) -->
       <input
-        type="text"
-        id="txt-lin"
-        placeholder="Resultado da linha consultada"
-        readonly
+        type="file"
+        id="foto-input"
+        accept="image/*"
+        capture="environment"
+        style="display:none;"
       />
     </div>
-<hr class="sep" />
-    <!-- Resultado da consulta (H->I) -->
+
+    <hr class="sep" />
+
     <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
-
-    <!-- Descrição Português -->
     <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly />
-
-    <!-- Gruas aplicáveis -->
     <textarea id="gruas-aplicaveis" placeholder="Gruas aplicáveis" readonly></textarea>
-
-    <!-- Correspondência exata -->
     <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
 
     <p id="status-msg"></p>
 
-    <!-- Debug -->
     <div class="debug-wrap">
       <label for="debug-log">Debug</label>
       <textarea id="debug-log" rows="10" readonly></textarea>
@@ -133,6 +126,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-
-
-
