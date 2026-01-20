@@ -1,6 +1,6 @@
-// v3.84 - Linha Inventário: consultar/deletar por número da linha (get_row / del_row) no ENDPOINT_REGISTRO
+// v3.9 - Foto por linha (Registrar pergunta; salva #linha.jpg no Drive via Apps Script Inventário; grava URL na col I; preview na consulta de linha; substituir foto)
 
-const APP_VERSION = "v3.84";
+const APP_VERSION = "v3.9";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -15,7 +15,10 @@ let lastHandledAt = 0;
 
 let gpsString = "";
 
-// -------------------- DEBUG --------------------
+// controle do fluxo de foto
+let pendingPhotoRow = null;     // linha a salvar/substituir foto
+let pendingPhotoReason = "";    // "registrar" | "substituir"
+
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
   const ts = new Date().toLocaleTimeString();
@@ -25,10 +28,74 @@ logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
 
-function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
-function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
+window.addEventListener("DOMContentLoaded", () => {
+  const rua = document.getElementById("rua-input");
+  const andar = document.getElementById("andar-input");
+  const campo1 = document.getElementById("campo1");
+  const numInv = document.getElementById("numinv-input");
+  const codigoC = document.getElementById("codigo-c-input");
+  const linhaConsulta = document.getElementById("linha_consulta");
 
-// -------------------- HELPERS --------------------
+  function onlyDigits(el, label) {
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const before = el.value;
+      const after = before.replace(/\D+/g, "");
+      if (before !== after) {
+        el.value = after;
+        logDebug(`${label}: removidos caracteres não numéricos.`);
+      }
+    });
+  }
+
+  onlyDigits(rua, "Rua");
+  onlyDigits(andar, "Andar");
+  onlyDigits(numInv, "NumInv");
+  onlyDigits(codigoC, "Codigo C");
+  onlyDigits(linhaConsulta, "Linha");
+
+  if (campo1) {
+    campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
+  }
+
+  // listener do input de foto (camera)
+  const fotoInput = document.getElementById("foto-input");
+  if (fotoInput) {
+    fotoInput.addEventListener("change", async () => {
+      if (!fotoInput.files || !fotoInput.files.length) return;
+
+      const file = fotoInput.files[0];
+      const row = pendingPhotoRow;
+
+      // reseta seleção para permitir selecionar o mesmo arquivo novamente
+      fotoInput.value = "";
+
+      if (!row) {
+        logDebug("Foto selecionada, mas pendingPhotoRow está null. Ignorando.");
+        return;
+      }
+
+      try {
+        logDebug(`Foto selecionada (${pendingPhotoReason}). row=${row}, name=${file.name}, type=${file.type}, size=${file.size}`);
+        const base64 = await fileToBase64(file);
+        const mime = file.type || "image/jpeg";
+        await enviarFotoParaInventario(row, base64, mime);
+      } catch (err) {
+        logDebug("Erro ao processar/enviar foto: " + err);
+        setStatus("Erro ao enviar foto (ver debug).");
+      } finally {
+        pendingPhotoRow = null;
+        pendingPhotoReason = "";
+      }
+    });
+  }
+});
+
+function setStatus(msg) {
+  const status = document.getElementById("status-msg");
+  if (status) status.innerText = msg || "";
+}
+
 function setCampo1CorPorTamanho(valor) {
   const el = document.getElementById("campo1");
   if (!el) return;
@@ -40,48 +107,10 @@ function setCampo1CorPorTamanho(valor) {
   else el.classList.add("campo1-bad");
 }
 
-function limparCamposPosRegistroSucesso() {
-  const campo1 = document.getElementById("campo1");
-  const campo2 = document.getElementById("campo2");
-  const codigoC = document.getElementById("codigoC-input");
-  const rua = document.getElementById("rua-input");
-  const andar = document.getElementById("andar-input");
+function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
+function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
-  if (campo1) campo1.value = "";
-  if (codigoC) codigoC.value = "";
-  if (campo2) campo2.value = "";
-  if (rua) rua.value = "";
-  if (andar) andar.value = "";
-
-  setCampo1CorPorTamanho("");
-  logDebug("Campos limpos após registro bem-sucedido.");
-}
-
-function onlyDigits(el, label, maxLen = null) {
-  if (!el) return;
-  el.addEventListener("input", () => {
-    const before = el.value;
-    let after = before.replace(/\D+/g, "");
-    if (maxLen && after.length > maxLen) after = after.slice(0, maxLen);
-    if (before !== after) {
-      el.value = after;
-      logDebug(`${label}: removidos caracteres não numéricos.`);
-    }
-  });
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  onlyDigits(document.getElementById("rua-input"), "Rua");
-  onlyDigits(document.getElementById("andar-input"), "Andar");
-  onlyDigits(document.getElementById("codigoC-input"), "Codigo C");
-  onlyDigits(document.getElementById("numinv-input"), "NumInv");
-  onlyDigits(document.getElementById("linha_consulta"), "Linha consulta", 3);
-
-  const campo1 = document.getElementById("campo1");
-  if (campo1) campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
-});
-
-// -------------------- QR SCANNER --------------------
+// ---------- QR ----------
 function iniciarLeitor() {
   if (scannerRunning) return;
   logDebug("Iniciando leitor...");
@@ -98,8 +127,6 @@ function iniciarLeitor() {
     qrCodeMessage => processarQRCode(qrCodeMessage)
   ).then(() => {
     scannerRunning = true;
-    leituraProcessada = false;
-    lastHandledAt = 0;
     logDebug("Leitor iniciado com facingMode=environment.");
   }).catch(async (err) => {
     logDebug("Falhou facingMode=environment, listando câmeras... " + err);
@@ -172,7 +199,7 @@ function processarQRCode(qrCodeMessage) {
   consultarDados();
 }
 
-// -------------------- CONSULTA (Consolidado) --------------------
+// ---------- CONSULTA (já existente no seu fluxo) ----------
 function consultarDados() {
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   let parte1 = (document.getElementById("campo2")?.value || "").trim();
@@ -208,9 +235,6 @@ function consultarDados() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
     else { if (elI) elI.value = "Não encontrado"; }
-  }).catch(e=>{
-    logDebug("Erro (H->I): " + e);
-    if (elI) elI.value = "Não encontrado";
   });
 
   const urlGruas = `${ENDPOINT_CONSULTA}?mode=gruas&h=${encodeURIComponent(parte0)}`;
@@ -229,9 +253,6 @@ function consultarDados() {
     } else {
       document.getElementById("gruas-aplicaveis").value = "Não encontrado";
     }
-  }).catch(e=>{
-    logDebug("Erro Gruas: " + e);
-    document.getElementById("gruas-aplicaveis").value = "Não encontrado";
   });
 
   const urlExata = `${ENDPOINT_CONSULTA}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
@@ -241,25 +262,19 @@ function consultarDados() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     document.getElementById("correspondencia-exata").value =
       (j && j.ok && (j.exata||"").trim()) ? (j.exata||"").trim() : "Não encontrado";
-  }).catch(e=>{
-    logDebug("Erro Exata: " + e);
-    document.getElementById("correspondencia-exata").value = "Não encontrado";
   });
 
   const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
-  logDebug("GET Descrição Português: " + urlDescPT);
+  logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     document.getElementById("descricao-pt").value =
       (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
-  }).catch(e=>{
-    logDebug("Erro Desc PT: " + e);
-    document.getElementById("descricao-pt").value = "Não encontrado";
   });
 }
 
-// -------------------- GPS --------------------
+// ---------- GPS ----------
 function obterGpsString() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
@@ -281,10 +296,8 @@ function obterGpsString() {
   });
 }
 
-// -------------------- REGISTRO (Inventário) --------------------
+// ---------- REGISTRAR + FOTO ----------
 async function registrarMovimentacaoUI() {
-  const status = document.getElementById("status-msg");
-
   const campo1 = (document.getElementById("campo1")?.value || "").trim();
   let campo2 = (document.getElementById("campo2")?.value || "").trim();
   const loc   = (document.getElementById("loc-select")?.value || "").trim();
@@ -302,12 +315,12 @@ async function registrarMovimentacaoUI() {
 
   if (!campo1) {
     logDebug("Registrar: campo1 vazio. Cancelando.");
-    if (status) status.innerText = "Preencha o campo1 antes de registrar.";
+    setStatus("Preencha o campo1 antes de registrar.");
     return;
   }
 
   gpsString = "";
-  if (status) status.innerText = gpsOn ? "Obtendo GPS..." : "Registrando...";
+  setStatus(gpsOn ? "Obtendo GPS..." : "Registrando...");
 
   if (gpsOn) {
     try {
@@ -339,141 +352,223 @@ async function registrarMovimentacaoUI() {
     try { j = JSON.parse(raw); } catch {}
 
     if (j && j.ok && j.appended) {
-      if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
+      setStatus(`Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`);
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
-      limparCamposPosRegistroSucesso();
+
+      // limpa campos após registrar OK (conforme pedido)
+      limparCamposAposRegistrarOK();
+
+      // pergunta se quer tirar foto
+      const querFoto = window.confirm(`Registro OK na linha ${j.row}. Deseja tirar uma foto do item?`);
+      if (querFoto) {
+        pendingPhotoRow = j.row;
+        pendingPhotoReason = "registrar";
+        abrirCameraParaFoto();
+      }
+
     } else {
-      if (status) status.innerText = "Falha ao registrar (ver debug).";
+      setStatus("Falha ao registrar (ver debug).");
       logDebug("Registrar: resposta inválida/sem ok.");
     }
   } catch (err) {
-    if (status) status.innerText = "Erro de rede ao registrar (ver debug).";
+    setStatus("Erro de rede ao registrar (ver debug).");
     logDebug("Erro Registrar: " + err);
   }
 }
 
-// -------------------- NOVO: CONSULTAR LINHA (Inventário) --------------------
+function limparCamposAposRegistrarOK() {
+  const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input"];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  setCampo1CorPorTamanho("");
+
+  // também limpa alguns campos de exibição se você quiser
+  // (mantenho conservador para não atrapalhar o fluxo)
+}
+
+// abre câmera traseira via input file
+function abrirCameraParaFoto() {
+  const fotoInput = document.getElementById("foto-input");
+  if (!fotoInput) {
+    logDebug("foto-input não encontrado no HTML.");
+    setStatus("Erro: foto-input não encontrado.");
+    pendingPhotoRow = null;
+    pendingPhotoReason = "";
+    return;
+  }
+  setStatus("Abrindo câmera...");
+  fotoInput.click();
+}
+
+// converte arquivo -> base64 sem prefixo data:
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const res = String(fr.result || "");
+      // res = "data:image/jpeg;base64,...."
+      const idx = res.indexOf("base64,");
+      if (idx >= 0) resolve(res.substring(idx + 7));
+      else reject(new Error("Não foi possível extrair base64 do arquivo."));
+    };
+    fr.onerror = () => reject(fr.error || new Error("Falha ao ler arquivo."));
+    fr.readAsDataURL(file);
+  });
+}
+
+// POST para Apps Script Inventário: mode=upload_foto {row, base64, mime}
+async function enviarFotoParaInventario(row, base64, mime) {
+  setStatus(`Enviando foto da linha ${row}...`);
+  const payload = { mode: "upload_foto", row, base64, mime };
+
+  logDebug(`POST upload_foto: row=${row}, mime=${mime}, base64_len=${base64.length}`);
+
+  const resp = await fetch(ENDPOINT_REGISTRO, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const raw = await resp.text();
+  logDebug("Resposta upload_foto raw: " + raw);
+
+  let j = null;
+  try { j = JSON.parse(raw); } catch {}
+
+  if (j && j.ok && j.uploaded && (j.fotoUrl || "").trim()) {
+    setStatus(`Foto salva com sucesso (linha ${row}).`);
+    // atualiza preview se a linha consultada for a mesma
+    atualizarPreviewFoto(j.fotoUrl);
+    logDebug(`Foto OK: row=${row}, url=${j.fotoUrl}`);
+  } else {
+    setStatus("Falha ao salvar foto (ver debug).");
+    logDebug("upload_foto: resposta inválida/sem ok.");
+  }
+}
+
+function atualizarPreviewFoto(url) {
+  const img = document.getElementById("foto-preview");
+  if (!img) return;
+
+  if (url && String(url).trim()) {
+    // cache buster
+    img.src = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+    img.style.display = "block";
+  } else {
+    img.src = "";
+    img.style.display = "none";
+  }
+}
+
+// ---------- CONSULTAR LINHA + PREVIEW + SUBSTITUIR FOTO ----------
 async function consultarLinhaInventarioUI() {
-  const status = document.getElementById("status-msg");
-  const txtLin = document.getElementById("txt_lin");
-  const linStr = (document.getElementById("linha_consulta")?.value || "").trim();
+  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
+  const row = parseInt(linhaStr, 10);
 
-  if (txtLin) txtLin.value = "";
-
-  const row = parseInt(linStr, 10);
   if (!row || row < 2) {
     logDebug("Consultar linha: informe um número de linha válido (>=2).");
-    if (status) status.innerText = "Informe uma linha válida (>=2).";
-    if (txtLin) txtLin.value = "Linha inválida.";
+    setStatus("Informe um número de linha válido (>=2).");
     return;
   }
 
-  if (status) status.innerText = "Consultando linha...";
-  const url = `${ENDPOINT_REGISTRO}?mode=get_row&row=${encodeURIComponent(String(row))}&t=${Date.now()}`;
-  logDebug("GET Consultar linha (get_row): " + url);
+  const url = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
+  logDebug("GET Consultar linha (get_lin): " + url);
+  setStatus("Consultando linha...");
 
   try {
     const raw = await (await fetch(url)).text();
-    logDebug("Resposta get_row raw: " + raw);
+    logDebug("Resposta get_lin raw: " + raw);
 
     let j = null;
     try { j = JSON.parse(raw); } catch {}
 
-    if (j && j.ok && j.row) {
-      const resumo =
-        `Linha ${j.row}: ` +
-        `Codigo 9: "${j.campo1 || ""}"; ` +
-        `Num ind: "${j.campo2 || ""}"; ` +
-        `Pátio: "${j.loc || ""}"; ` +
-        `Rua: "${j.rua || ""}"; ` +
-        `Andar: "${j.andar || ""}"; ` +
-        `GPS: "${j.gpsString || ""}"; ` +
-        `Data/Hora: "${j.dataHora || ""}"; ` +
-        `NumInv: "${j.numInv || ""}"`;
+    if (j && j.ok && j.data) {
+      const d = j.data;
+      const txt = `Linha ${row}: campo1=${d.campo1} | campo2=${d.campo2} | loc=${d.loc} | rua=${d.rua} | andar=${d.andar} | numInv=${d.numInv} | dataHora=${d.dataHora}`;
+      const out = document.getElementById("txt-lin");
+      if (out) out.value = txt;
 
-      if (txtLin) txtLin.value = resumo;
-      if (status) status.innerText = "Linha consultada.";
-      logDebug("Linha consultada OK.");
+      atualizarPreviewFoto(d.fotoUrl || "");
+      setStatus(`Linha ${row} carregada.`);
     } else {
-      if (txtLin) txtLin.value = "Não encontrado.";
-      if (status) status.innerText = "Linha não encontrada (ver debug).";
-      logDebug("Consultar linha: resposta inválida/sem ok.");
+      setStatus("Linha não encontrada/erro (ver debug).");
+      const out = document.getElementById("txt-lin");
+      if (out) out.value = "Não encontrado";
+      atualizarPreviewFoto("");
     }
-  } catch (e) {
-    if (txtLin) txtLin.value = "Erro ao consultar.";
-    if (status) status.innerText = "Erro ao consultar (ver debug).";
-    logDebug("Erro consultar linha: " + e);
+  } catch (err) {
+    setStatus("Erro ao consultar linha (ver debug).");
+    logDebug("Erro get_lin: " + err);
   }
 }
 
-// -------------------- NOVO: DELETAR LINHA (Inventário) --------------------
 async function deletarLinhaInventarioUI() {
-  const status = document.getElementById("status-msg");
-  const txtLin = document.getElementById("txt_lin");
-  const linStr = (document.getElementById("linha_consulta")?.value || "").trim();
+  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
+  const row = parseInt(linhaStr, 10);
 
-  const row = parseInt(linStr, 10);
   if (!row || row < 2) {
-    logDebug("Deletar linha: informe um número de linha válido (>=2).");
-    if (status) status.innerText = "Informe uma linha válida (>=2).";
+    setStatus("Informe um número de linha válido (>=2).");
+    logDebug("Deletar linha: row inválido.");
     return;
   }
 
-  // 1) Recupera conteúdo antes de deletar (para confirmar)
-  const urlGet = `${ENDPOINT_REGISTRO}?mode=get_row&row=${encodeURIComponent(String(row))}&t=${Date.now()}`;
-  logDebug("GET Pré-delete (get_row): " + urlGet);
+  // Busca conteúdo antes para confirmar
+  const urlGet = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
+  logDebug("GET get_lin (pré-delete): " + urlGet);
 
-  let jGet = null;
   try {
     const rawGet = await (await fetch(urlGet)).text();
-    logDebug("Resposta pré-delete raw: " + rawGet);
-    try { jGet = JSON.parse(rawGet); } catch {}
-  } catch (e) {
-    logDebug("Erro pré-delete (get_row): " + e);
-  }
+    logDebug("Resposta get_lin (pré-delete) raw: " + rawGet);
 
-  if (!jGet || !jGet.ok) {
-    if (status) status.innerText = "Não foi possível recuperar a linha para confirmação (ver debug).";
-    return;
-  }
+    let jGet=null; try{ jGet=JSON.parse(rawGet);}catch{}
 
-  const resumo =
-    `Linha ${jGet.row}: ` +
-    `Codigo 9="${jGet.campo1 || ""}", ` +
-    `Num ind="${jGet.campo2 || ""}", ` +
-    `Pátio="${jGet.loc || ""}", Rua="${jGet.rua || ""}", Andar="${jGet.andar || ""}", ` +
-    `Data/Hora="${jGet.dataHora || ""}", NumInv="${jGet.numInv || ""}"`;
+    const resumo = (jGet && jGet.ok && jGet.data)
+      ? `campo1=${jGet.data.campo1} | campo2=${jGet.data.campo2} | loc=${jGet.data.loc} | rua=${jGet.data.rua} | andar=${jGet.data.andar} | numInv=${jGet.data.numInv}`
+      : "(conteúdo indisponível)";
 
-  const ok = window.confirm(`Deseja deletar a linha ${row}?\n\n${resumo}`);
-  if (!ok) {
-    logDebug("Delete cancelado pelo usuário.");
-    if (status) status.innerText = "Delete cancelado.";
-    return;
-  }
+    const ok = window.confirm(`Deseja limpar a linha ${row}?\n\n${resumo}`);
+    if (!ok) return;
 
-  // 2) Deleta
-  if (status) status.innerText = "Deletando linha...";
-  const urlDel = `${ENDPOINT_REGISTRO}?mode=del_row&row=${encodeURIComponent(String(row))}&t=${Date.now()}`;
-  logDebug("GET Deletar (del_row): " + urlDel);
+    const urlClear = `${ENDPOINT_REGISTRO}?mode=clear_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
+    logDebug("GET clear_lin: " + urlClear);
+    setStatus("Limpando linha...");
 
-  try {
-    const rawDel = await (await fetch(urlDel)).text();
-    logDebug("Resposta del_row raw: " + rawDel);
+    const rawClear = await (await fetch(urlClear)).text();
+    logDebug("Resposta clear_lin raw: " + rawClear);
 
-    let jDel = null;
-    try { jDel = JSON.parse(rawDel); } catch {}
-
-    if (jDel && jDel.ok && jDel.cleared) {
-      if (status) status.innerText = `Linha ${row} deletada com sucesso.`;
-      if (txtLin) txtLin.value = `Linha ${row} deletada.`;
-      logDebug("Delete OK.");
+    let j=null; try{ j=JSON.parse(rawClear);}catch{}
+    if (j && j.ok && j.cleared) {
+      setStatus(`Linha ${row} limpa com sucesso.`);
+      const out = document.getElementById("txt-lin");
+      if (out) out.value = "";
+      atualizarPreviewFoto("");
     } else {
-      if (status) status.innerText = "Falha ao deletar (ver debug).";
-      logDebug("Delete: resposta inválida/sem ok.");
+      setStatus("Falha ao limpar linha (ver debug).");
     }
-  } catch (e) {
-    if (status) status.innerText = "Erro ao deletar (ver debug).";
-    logDebug("Erro delete: " + e);
+
+  } catch (err) {
+    setStatus("Erro ao limpar linha (ver debug).");
+    logDebug("Erro clear_lin: " + err);
   }
 }
 
+function substituirFotoLinhaUI() {
+  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
+  const row = parseInt(linhaStr, 10);
+
+  if (!row || row < 2) {
+    setStatus("Informe um número de linha válido (>=2).");
+    logDebug("Substituir foto: row inválido.");
+    return;
+  }
+
+  const ok = window.confirm(`Deseja substituir a foto da linha ${row}?`);
+  if (!ok) return;
+
+  pendingPhotoRow = row;
+  pendingPhotoReason = "substituir";
+  abrirCameraParaFoto();
+}
