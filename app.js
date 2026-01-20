@@ -426,9 +426,10 @@ async function enviarFotoParaInventario(row, base64, mime) {
 
   logDebug(`POST upload_foto: row=${row}, mime=${mime}, base64_len=${base64.length}`);
 
+  // IMPORTANTE: usar Content-Type simples para evitar preflight (CORS)
   const resp = await fetch(ENDPOINT_REGISTRO, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
   });
 
@@ -440,7 +441,6 @@ async function enviarFotoParaInventario(row, base64, mime) {
 
   if (j && j.ok && j.uploaded && (j.fotoUrl || "").trim()) {
     setStatus(`Foto salva com sucesso (linha ${row}).`);
-    // atualiza preview se a linha consultada for a mesma
     atualizarPreviewFoto(j.fotoUrl);
     logDebug(`Foto OK: row=${row}, url=${j.fotoUrl}`);
   } else {
@@ -572,3 +572,4 @@ function substituirFotoLinhaUI() {
   pendingPhotoReason = "substituir";
   abrirCameraParaFoto();
 }
+
