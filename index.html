@@ -1,4 +1,4 @@
-<!-- index.html - v4.0 (bloco LINHA com preview + substituir foto) -->
+<!-- index.html - v4.2 (BLOCO LINHA com Abrir Foto sempre visível + Substituir Foto) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -76,6 +76,7 @@
 
     <hr class="sep" />
 
+    <!-- BLOCO LINHA -->
     <div class="linha-tools">
       <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <input
@@ -94,12 +95,18 @@
       <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
 
       <div class="foto-link-row" style="display:flex; gap:10px; align-items:center; margin-top:8px;">
-  <a id="foto-link" href="#" target="_blank" rel="noopener noreferrer" style="flex:1; display:none;">
-    <button type="button" id="btn-abrirfoto" style="width:100%;">Abrir foto</button>
-  </a>
-
-  
-</div>
+        <button
+          type="button"
+          id="btn-abrirfoto"
+          style="width:100%;"
+          disabled
+          onclick="abrirFotoLinha()"
+          title="Sem foto para esta linha"
+        >
+          Abrir foto
+        </button>
+      </div>
+    </div>
 
     <hr class="sep" />
 
@@ -124,5 +131,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-
-
