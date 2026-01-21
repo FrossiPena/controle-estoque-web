@@ -1,4 +1,4 @@
-// v4.3 - FIX: após upload/registrar, preenche linha_consulta com o row e consulta a linha correta
+// v5.0 - FIX: após upload/registrar, preenche linha_consulta com o row e consulta a linha correta
 // Mantém: botão Abrir Foto, QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin, upload_foto via POST text/plain
 
 const APP_VERSION = "v4.3-fix-consulta-linha-pos-upload";
@@ -626,3 +626,4 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
+
