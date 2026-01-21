@@ -1,6 +1,7 @@
-// v3.9 - Foto por linha (Registrar pergunta; salva #linha.jpg no Drive via Apps Script Inventário; grava URL na col I; preview na consulta de linha; substituir foto)
+// v4.0-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
+// Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
 
-const APP_VERSION = "v3.9";
+const APP_VERSION = "v4.0-app";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/macros/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -15,15 +16,12 @@ let lastHandledAt = 0;
 
 let gpsString = "";
 
-// controle do fluxo de foto
-let pendingPhotoRow = null;     // linha a salvar/substituir foto
-let pendingPhotoReason = "";    // "registrar" | "substituir"
-
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
   const ts = new Date().toLocaleTimeString();
   if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
+
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
@@ -32,9 +30,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
   const campo1 = document.getElementById("campo1");
-  const numInv = document.getElementById("numinv-input");
   const codigoC = document.getElementById("codigo-c-input");
-  const linhaConsulta = document.getElementById("linha_consulta");
+  const numInv = document.getElementById("numinv-input");
 
   function onlyDigits(el, label) {
     if (!el) return;
@@ -51,50 +48,19 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
   onlyDigits(numInv, "NumInv");
+  // ATENÇÃO: você pediu "Codigo C - apenas numeros"
   onlyDigits(codigoC, "Codigo C");
-  onlyDigits(linhaConsulta, "Linha");
 
   if (campo1) {
     campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
   }
 
-  // listener do input de foto (camera)
-  const fotoInput = document.getElementById("foto-input");
-  if (fotoInput) {
-    fotoInput.addEventListener("change", async () => {
-      if (!fotoInput.files || !fotoInput.files.length) return;
-
-      const file = fotoInput.files[0];
-      const row = pendingPhotoRow;
-
-      // reseta seleção para permitir selecionar o mesmo arquivo novamente
-      fotoInput.value = "";
-
-      if (!row) {
-        logDebug("Foto selecionada, mas pendingPhotoRow está null. Ignorando.");
-        return;
-      }
-
-      try {
-        logDebug(`Foto selecionada (${pendingPhotoReason}). row=${row}, name=${file.name}, type=${file.type}, size=${file.size}`);
-        const base64 = await fileToBase64(file);
-        const mime = file.type || "image/jpeg";
-        await enviarFotoParaInventario(row, base64, mime);
-      } catch (err) {
-        logDebug("Erro ao processar/enviar foto: " + err);
-        setStatus("Erro ao enviar foto (ver debug).");
-      } finally {
-        pendingPhotoRow = null;
-        pendingPhotoReason = "";
-      }
-    });
+  // Botão substituir foto
+  const btnSub = document.getElementById("btn-substfoto");
+  if (btnSub) {
+    btnSub.addEventListener("click", () => substituirFotoLinhaUI());
   }
 });
-
-function setStatus(msg) {
-  const status = document.getElementById("status-msg");
-  if (status) status.innerText = msg || "";
-}
 
 function setCampo1CorPorTamanho(valor) {
   const el = document.getElementById("campo1");
@@ -110,7 +76,10 @@ function setCampo1CorPorTamanho(valor) {
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
-// ---------- QR ----------
+/* =========================
+   QR / Scanner
+========================= */
+
 function iniciarLeitor() {
   if (scannerRunning) return;
   logDebug("Iniciando leitor...");
@@ -194,19 +163,20 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("campo2").value = parte1Limpo;
 
   setCampo1CorPorTamanho(parte0);
+
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
   consultarDados();
 }
 
-// ---------- CONSULTA (já existente no seu fluxo) ----------
+/* =========================
+   CONSULTA (Consolidado)
+========================= */
+
 function consultarDados() {
   const parte0 = (document.getElementById("campo1")?.value || "").trim();
   let parte1 = (document.getElementById("campo2")?.value || "").trim();
-
-  parte1 = parte1.replace(/^0+/, "");
-  if (parte1 === "") parte1 = "0";
-  if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
+  const codigoC = (document.getElementById("codigo-c-input")?.value || "").trim();
 
   const elI = document.getElementById("resultado-google");
   const elGruas = document.getElementById("gruas-aplicaveis");
@@ -218,13 +188,49 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
+  // Se campo1 vazio -> usa modo h_por_l via Codigo C (seu fluxo novo)
   if (!parte0) {
-    if (elI) elI.value = "Não encontrado";
-    if (elGruas) elGruas.value = "Não encontrado";
-    if (elExata) elExata.value = "Não encontrado";
-    if (elDescPT) elDescPT.value = "Não encontrado";
+    if (!codigoC) {
+      if (elI) elI.value = "Não encontrado";
+      if (elGruas) elGruas.value = "Não encontrado";
+      if (elExata) elExata.value = "Não encontrado";
+      if (elDescPT) elDescPT.value = "Não encontrado";
+      logDebug("ConsultarUI: campo1 e Codigo C vazios. Nada a fazer.");
+      return;
+    }
+
+    const chaveL = formatarCodigoC(codigoC);
+    logDebug(`ConsultarUI: campo1 vazio -> buscando H por L usando chave "${chaveL}".`);
+
+    const urlHporL = `${ENDPOINT_CONSULTA}?mode=h_por_l&l=${encodeURIComponent(chaveL)}&t=${Date.now()}`;
+    logDebug("GET Buscar H por L (L->H): " + urlHporL);
+
+    fetch(urlHporL).then(r=>r.text()).then(raw=>{
+      logDebug("Resposta (L->H) raw: " + raw);
+      let j=null; try{ j=JSON.parse(raw); }catch{}
+
+      if (j && j.ok && (j.h||"").trim()) {
+        const h = String(j.h).trim();
+        document.getElementById("campo1").value = h;
+        setCampo1CorPorTamanho(h);
+        // agora executa consulta normal por H
+        consultarDados();
+      } else {
+        logDebug("ConsultarUI: não encontrou ocorrência em L.");
+        if (elI) elI.value = "Não encontrado";
+        if (elGruas) elGruas.value = "Não encontrado";
+        if (elExata) elExata.value = "Não encontrado";
+        if (elDescPT) elDescPT.value = "Não encontrado";
+      }
+    });
+
     return;
   }
+
+  // Fluxo normal (campo1 preenchido)
+  parte1 = parte1.replace(/^0+/, "");
+  if (parte1 === "") parte1 = "0";
+  if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
 
   setCampo1CorPorTamanho(parte0);
 
@@ -274,7 +280,29 @@ function consultarDados() {
   });
 }
 
-// ---------- GPS ----------
+function formatarCodigoC(apenasNumeros) {
+  // Entrada esperada: apenas números e letras (mas você filtra só números no input).
+  // Você pediu: se entrar 123456789ABC -> C123.456-789.ABC
+  // Como seu campo é “apenas numeros”, vou formatar com 12 dígitos: Cxxx.xxx-xxx.xxx
+  // Se você realmente quiser sufixo ABC, retire o onlyDigits do codigoC.
+  const raw = String(apenasNumeros || "").trim();
+  const s = raw.replace(/\s+/g, "");
+  // tenta 12 dígitos
+  if (s.length >= 12) {
+    const a = s.substring(0,3);
+    const b = s.substring(3,6);
+    const c = s.substring(6,9);
+    const d = s.substring(9,12);
+    return `C${a}.${b}-${c}.${d}`;
+  }
+  // fallback simples
+  return `C${s}`;
+}
+
+/* =========================
+   GPS
+========================= */
+
 function obterGpsString() {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
@@ -296,10 +324,16 @@ function obterGpsString() {
   });
 }
 
-// ---------- REGISTRAR + FOTO ----------
+/* =========================
+   REGISTRAR (Inventário)
+========================= */
+
 async function registrarMovimentacaoUI() {
+  const status = document.getElementById("status-msg");
+
   const campo1 = (document.getElementById("campo1")?.value || "").trim();
   let campo2 = (document.getElementById("campo2")?.value || "").trim();
+
   const loc   = (document.getElementById("loc-select")?.value || "").trim();
   const rua   = (document.getElementById("rua-input")?.value || "").trim();
   const andar = (document.getElementById("andar-input")?.value || "").trim();
@@ -315,12 +349,12 @@ async function registrarMovimentacaoUI() {
 
   if (!campo1) {
     logDebug("Registrar: campo1 vazio. Cancelando.");
-    setStatus("Preencha o campo1 antes de registrar.");
+    if (status) status.innerText = "Preencha o campo1 antes de registrar.";
     return;
   }
 
   gpsString = "";
-  setStatus(gpsOn ? "Obtendo GPS..." : "Registrando...");
+  if (status) status.innerText = gpsOn ? "Obtendo GPS..." : "Registrando...";
 
   if (gpsOn) {
     try {
@@ -352,81 +386,217 @@ async function registrarMovimentacaoUI() {
     try { j = JSON.parse(raw); } catch {}
 
     if (j && j.ok && j.appended) {
-      setStatus(`Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`);
+      if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
 
-      // limpa campos após registrar OK (conforme pedido)
-      limparCamposAposRegistrarOK();
-
-      // pergunta se quer tirar foto
-      const querFoto = window.confirm(`Registro OK na linha ${j.row}. Deseja tirar uma foto do item?`);
+      // Pergunta foto
+      const querFoto = confirm(`Deseja tirar/selecionar uma foto para a linha ${j.row}?`);
       if (querFoto) {
-        pendingPhotoRow = j.row;
-        pendingPhotoReason = "registrar";
-        abrirCameraParaFoto();
+        await selecionarEEnviarFotoParaLinha(j.row, "registrar");
       }
 
+      // Limpa campos após registrar OK
+      limparCamposAposRegistroOK();
+
     } else {
-      setStatus("Falha ao registrar (ver debug).");
+      if (status) status.innerText = "Falha ao registrar (ver debug).";
       logDebug("Registrar: resposta inválida/sem ok.");
     }
   } catch (err) {
-    setStatus("Erro de rede ao registrar (ver debug).");
+    if (status) status.innerText = "Erro de rede ao registrar (ver debug).";
     logDebug("Erro Registrar: " + err);
   }
 }
 
-function limparCamposAposRegistrarOK() {
+function limparCamposAposRegistroOK() {
   const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input"];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   setCampo1CorPorTamanho("");
-
-  // também limpa alguns campos de exibição se você quiser
-  // (mantenho conservador para não atrapalhar o fluxo)
 }
 
-// abre câmera traseira via input file
-function abrirCameraParaFoto() {
-  const fotoInput = document.getElementById("foto-input");
-  if (!fotoInput) {
-    logDebug("foto-input não encontrado no HTML.");
-    setStatus("Erro: foto-input não encontrado.");
-    pendingPhotoRow = null;
-    pendingPhotoReason = "";
+/* =========================
+   LINHA: consultar / deletar (clear)
+========================= */
+
+async function consultarLinhaInventarioUI() {
+  const inp = document.getElementById("linha_consulta");
+  const txt = document.getElementById("txt-lin");
+  const img = document.getElementById("foto-preview");
+
+  const row = parseInt(String(inp?.value || "").trim(), 10);
+  if (!row || row < 2) {
+    logDebug("Consultar linha: informe um número de linha válido (>=2).");
+    if (txt) txt.value = "Linha inválida (>=2).";
+    if (img) img.style.display = "none";
     return;
   }
-  setStatus("Abrindo câmera...");
-  fotoInput.click();
+
+  const url = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
+  logDebug("GET Consultar linha (get_lin): " + url);
+
+  try {
+    const raw = await (await fetch(url)).text();
+    logDebug("Resposta get_lin raw: " + raw);
+
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (!(j && j.ok && j.data)) {
+      if (txt) txt.value = "Não encontrado";
+      if (img) img.style.display = "none";
+      return;
+    }
+
+    const d = j.data;
+
+    const resumo =
+      `Linha ${row} | NumInv=${d.numInv || ""} | Campo1=${d.campo1 || ""} | Campo2=${d.campo2 || ""} | ` +
+      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | DataHora=${d.dataHora || ""}`;
+
+    if (txt) txt.value = resumo;
+
+    // Preview foto
+    const fotoUrl = String(d.fotoUrl || "").trim();
+    if (img) {
+      if (fotoUrl) {
+        img.src = fotoUrl;
+        img.style.display = "block";
+      } else {
+        img.style.display = "none";
+      }
+    }
+
+  } catch (err) {
+    logDebug("Erro get_lin: " + err);
+    if (txt) txt.value = "Erro ao consultar (ver debug).";
+    if (img) img.style.display = "none";
+  }
 }
 
-// converte arquivo -> base64 sem prefixo data:
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => {
-      const res = String(fr.result || "");
-      // res = "data:image/jpeg;base64,...."
-      const idx = res.indexOf("base64,");
-      if (idx >= 0) resolve(res.substring(idx + 7));
-      else reject(new Error("Não foi possível extrair base64 do arquivo."));
+async function deletarLinhaInventarioUI() {
+  const inp = document.getElementById("linha_consulta");
+  const txt = document.getElementById("txt-lin");
+  const img = document.getElementById("foto-preview");
+
+  const row = parseInt(String(inp?.value || "").trim(), 10);
+  if (!row || row < 2) {
+    logDebug("Deletar linha: informe um número de linha válido (>=2).");
+    if (txt) txt.value = "Linha inválida (>=2).";
+    return;
+  }
+
+  // Primeiro consulta para mostrar conteúdo
+  const urlGet = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
+  logDebug("GET (pré-delete) get_lin: " + urlGet);
+
+  let resumo = `linha ${row}`;
+  try {
+    const rawGet = await (await fetch(urlGet)).text();
+    logDebug("Resposta (pré-delete) raw: " + rawGet);
+    const j = JSON.parse(rawGet);
+    if (j && j.ok && j.data) {
+      const d = j.data;
+      resumo = `linha ${row} | campo1=${d.campo1 || ""} | campo2=${d.campo2 || ""} | numInv=${d.numInv || ""}`;
+    }
+  } catch {}
+
+  const ok = confirm(`Deseja deletar (limpar) a ${resumo}?`);
+  if (!ok) return;
+
+  const urlClear = `${ENDPOINT_REGISTRO}?mode=clear_lin&row=${row}&t=${Date.now()}`;
+  logDebug("GET clear_lin: " + urlClear);
+
+  try {
+    const raw = await (await fetch(urlClear)).text();
+    logDebug("Resposta clear_lin raw: " + raw);
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+
+    if (j && j.ok && j.cleared) {
+      if (txt) txt.value = `Linha ${row} limpa com sucesso.`;
+      if (img) img.style.display = "none";
+    } else {
+      if (txt) txt.value = "Falha ao limpar linha (ver debug).";
+    }
+  } catch (err) {
+    logDebug("Erro clear_lin: " + err);
+    if (txt) txt.value = "Erro ao limpar (ver debug).";
+  }
+}
+
+/* =========================
+   FOTO: selecionar / substituir
+========================= */
+
+async function substituirFotoLinhaUI() {
+  const inp = document.getElementById("linha_consulta");
+  const row = parseInt(String(inp?.value || "").trim(), 10);
+  if (!row || row < 2) {
+    logDebug("Substituir foto: informe linha válida (>=2).");
+    return;
+  }
+  await selecionarEEnviarFotoParaLinha(row, "substituir");
+}
+
+async function selecionarEEnviarFotoParaLinha(row, origem) {
+  // cria input file temporário
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  // dica para mobile abrir câmera
+  fileInput.capture = "environment";
+
+  return new Promise((resolve) => {
+    fileInput.onchange = async () => {
+      try {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) { resolve(); return; }
+
+        logDebug(`Foto selecionada (${origem}). row=${row}, name=${file.name}, type=${file.type}, size=${file.size}`);
+
+        const j = await uploadFotoParaLinha(row, file);
+
+        logDebug(`Foto OK: row=${j.row} url=${j.fotoUrl}`);
+
+        // Atualiza preview
+        const img = document.getElementById("foto-preview");
+        if (img) {
+          img.src = j.fotoUrl;
+          img.style.display = "block";
+        }
+
+        // Recarrega linha no txt-lin
+        await consultarLinhaInventarioUI();
+
+      } catch (e) {
+        logDebug("Erro ao processar/enviar foto: " + e);
+      }
+      resolve();
     };
-    fr.onerror = () => reject(fr.error || new Error("Falha ao ler arquivo."));
-    fr.readAsDataURL(file);
+
+    fileInput.click();
   });
 }
 
-// POST para Apps Script Inventário: mode=upload_foto {row, base64, mime}
-async function enviarFotoParaInventario(row, base64, mime) {
-  setStatus(`Enviando foto da linha ${row}...`);
-  const payload = { mode: "upload_foto", row, base64, mime };
+async function uploadFotoParaLinha(row, file) {
+  const base64 = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const s = String(fr.result || "");
+      const idx = s.indexOf("base64,");
+      resolve(idx >= 0 ? s.substring(idx + 7) : s);
+    };
+    fr.onerror = () => reject(fr.error || new Error("Falha ao ler arquivo"));
+    fr.readAsDataURL(file);
+  });
 
-  logDebug(`POST upload_foto: row=${row}, mime=${mime}, base64_len=${base64.length}`);
+  const payload = {
+    mode: "upload_foto",
+    row: Number(row),
+    mime: file.type || "image/jpeg",
+    base64
+  };
 
-  // IMPORTANTE: usar Content-Type simples para evitar preflight (CORS)
+  logDebug(`POST upload_foto: row=${payload.row}, mime=${payload.mime}, base64_len=${base64.length}`);
+
+  // CRÍTICO: text/plain para evitar preflight (CORS/OPTIONS)
   const resp = await fetch(ENDPOINT_REGISTRO, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -439,137 +609,8 @@ async function enviarFotoParaInventario(row, base64, mime) {
   let j = null;
   try { j = JSON.parse(raw); } catch {}
 
-  if (j && j.ok && j.uploaded && (j.fotoUrl || "").trim()) {
-    setStatus(`Foto salva com sucesso (linha ${row}).`);
-    atualizarPreviewFoto(j.fotoUrl);
-    logDebug(`Foto OK: row=${row}, url=${j.fotoUrl}`);
-  } else {
-    setStatus("Falha ao salvar foto (ver debug).");
-    logDebug("upload_foto: resposta inválida/sem ok.");
+  if (!(j && j.ok && j.fotoUrl)) {
+    throw new Error("upload_foto: resposta inválida/sem ok");
   }
+  return j;
 }
-
-function atualizarPreviewFoto(url) {
-  const img = document.getElementById("foto-preview");
-  if (!img) return;
-
-  if (url && String(url).trim()) {
-    // cache buster
-    img.src = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-    img.style.display = "block";
-  } else {
-    img.src = "";
-    img.style.display = "none";
-  }
-}
-
-// ---------- CONSULTAR LINHA + PREVIEW + SUBSTITUIR FOTO ----------
-async function consultarLinhaInventarioUI() {
-  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
-  const row = parseInt(linhaStr, 10);
-
-  if (!row || row < 2) {
-    logDebug("Consultar linha: informe um número de linha válido (>=2).");
-    setStatus("Informe um número de linha válido (>=2).");
-    return;
-  }
-
-  const url = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
-  logDebug("GET Consultar linha (get_lin): " + url);
-  setStatus("Consultando linha...");
-
-  try {
-    const raw = await (await fetch(url)).text();
-    logDebug("Resposta get_lin raw: " + raw);
-
-    let j = null;
-    try { j = JSON.parse(raw); } catch {}
-
-    if (j && j.ok && j.data) {
-      const d = j.data;
-      const txt = `Linha ${row}: campo1=${d.campo1} | campo2=${d.campo2} | loc=${d.loc} | rua=${d.rua} | andar=${d.andar} | numInv=${d.numInv} | dataHora=${d.dataHora}`;
-      const out = document.getElementById("txt-lin");
-      if (out) out.value = txt;
-
-      atualizarPreviewFoto(d.fotoUrl || "");
-      setStatus(`Linha ${row} carregada.`);
-    } else {
-      setStatus("Linha não encontrada/erro (ver debug).");
-      const out = document.getElementById("txt-lin");
-      if (out) out.value = "Não encontrado";
-      atualizarPreviewFoto("");
-    }
-  } catch (err) {
-    setStatus("Erro ao consultar linha (ver debug).");
-    logDebug("Erro get_lin: " + err);
-  }
-}
-
-async function deletarLinhaInventarioUI() {
-  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
-  const row = parseInt(linhaStr, 10);
-
-  if (!row || row < 2) {
-    setStatus("Informe um número de linha válido (>=2).");
-    logDebug("Deletar linha: row inválido.");
-    return;
-  }
-
-  // Busca conteúdo antes para confirmar
-  const urlGet = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
-  logDebug("GET get_lin (pré-delete): " + urlGet);
-
-  try {
-    const rawGet = await (await fetch(urlGet)).text();
-    logDebug("Resposta get_lin (pré-delete) raw: " + rawGet);
-
-    let jGet=null; try{ jGet=JSON.parse(rawGet);}catch{}
-
-    const resumo = (jGet && jGet.ok && jGet.data)
-      ? `campo1=${jGet.data.campo1} | campo2=${jGet.data.campo2} | loc=${jGet.data.loc} | rua=${jGet.data.rua} | andar=${jGet.data.andar} | numInv=${jGet.data.numInv}`
-      : "(conteúdo indisponível)";
-
-    const ok = window.confirm(`Deseja limpar a linha ${row}?\n\n${resumo}`);
-    if (!ok) return;
-
-    const urlClear = `${ENDPOINT_REGISTRO}?mode=clear_lin&row=${encodeURIComponent(row)}&t=${Date.now()}`;
-    logDebug("GET clear_lin: " + urlClear);
-    setStatus("Limpando linha...");
-
-    const rawClear = await (await fetch(urlClear)).text();
-    logDebug("Resposta clear_lin raw: " + rawClear);
-
-    let j=null; try{ j=JSON.parse(rawClear);}catch{}
-    if (j && j.ok && j.cleared) {
-      setStatus(`Linha ${row} limpa com sucesso.`);
-      const out = document.getElementById("txt-lin");
-      if (out) out.value = "";
-      atualizarPreviewFoto("");
-    } else {
-      setStatus("Falha ao limpar linha (ver debug).");
-    }
-
-  } catch (err) {
-    setStatus("Erro ao limpar linha (ver debug).");
-    logDebug("Erro clear_lin: " + err);
-  }
-}
-
-function substituirFotoLinhaUI() {
-  const linhaStr = (document.getElementById("linha_consulta")?.value || "").trim();
-  const row = parseInt(linhaStr, 10);
-
-  if (!row || row < 2) {
-    setStatus("Informe um número de linha válido (>=2).");
-    logDebug("Substituir foto: row inválido.");
-    return;
-  }
-
-  const ok = window.confirm(`Deseja substituir a foto da linha ${row}?`);
-  if (!ok) return;
-
-  pendingPhotoRow = row;
-  pendingPhotoReason = "substituir";
-  abrirCameraParaFoto();
-}
-
