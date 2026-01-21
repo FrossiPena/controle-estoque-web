@@ -1,7 +1,7 @@
 // v5.0 - FIX: após upload/registrar, preenche linha_consulta com o row e consulta a linha correta
 // Mantém: botão Abrir Foto, QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin, upload_foto via POST text/plain
 
-const APP_VERSION = "v4.3-fix-consulta-linha-pos-upload";
+const APP_VERSION = "v5.0-fix-consulta-linha-pos-upload";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -626,4 +626,5 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
+
 
