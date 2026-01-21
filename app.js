@@ -1,13 +1,13 @@
-// v4.0-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
+// v4.1-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
 // Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
 
-const APP_VERSION = "v4.0-app";
+const APP_VERSION = "v4.1-URL endpoint";
 
 const ENDPOINT_CONSULTA =
-  "https://script.google.com/macros/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
+  "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
 
 const ENDPOINT_REGISTRO =
-  "https://script.google.com/macros/s/AKfycbwFTBzg19Oehw0rQxFi1oVm31st0MouechBMMhNAHnJrj4nrWJKnikI9vAino2E8a_Q/exec";
+  "https://script.google.com/a/macros/realguindastes.com/s/AKfycbwFTBzg19Oehw0rQxFi1oVm31st0MouechBMMhNAHnJrj4nrWJKnikI9vAino2E8a_Q/exec";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -614,3 +614,4 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
+
