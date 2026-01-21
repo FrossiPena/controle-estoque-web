@@ -1,7 +1,7 @@
 // v4.1b-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
 // Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
 
-const APP_VERSION = "v4.1-URL endpoint";
+const APP_VERSION = "v4.1b-URL endpoint";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -614,6 +614,7 @@ logDebug(`upload_foto HTTP status: ${resp.status}`);
   }
   return j;
 }
+
 
 
 
