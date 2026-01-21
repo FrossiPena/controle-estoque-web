@@ -1,7 +1,7 @@
-// v4.1b-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
-// Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
+// v4.2 - Abrir foto via botão (sempre visível), sem <img> preview
+// Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin, upload_foto via POST text/plain
 
-const APP_VERSION = "v4.1b-URL endpoint";
+const APP_VERSION = "v4.2-botao-abrir-foto";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -15,6 +15,7 @@ let leituraProcessada = false;
 let lastHandledAt = 0;
 
 let gpsString = "";
+let FOTO_URL_ATUAL = "";
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -48,8 +49,7 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
   onlyDigits(numInv, "NumInv");
-  // ATENÇÃO: você pediu "Codigo C - apenas numeros"
-  onlyDigits(codigoC, "Codigo C");
+  onlyDigits(codigoC, "Codigo C"); // "apenas numeros"
 
   if (campo1) {
     campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
@@ -60,6 +60,9 @@ window.addEventListener("DOMContentLoaded", () => {
   if (btnSub) {
     btnSub.addEventListener("click", () => substituirFotoLinhaUI());
   }
+
+  // Inicializa botão abrir foto como desabilitado
+  setFotoUrlAtual("");
 });
 
 function setCampo1CorPorTamanho(valor) {
@@ -75,6 +78,29 @@ function setCampo1CorPorTamanho(valor) {
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
+
+/* =========================
+   FOTO: botão Abrir Foto
+========================= */
+
+function setFotoUrlAtual(url) {
+  FOTO_URL_ATUAL = String(url || "").trim();
+  const btn = document.getElementById("btn-abrirfoto");
+  if (!btn) return;
+
+  if (FOTO_URL_ATUAL) {
+    btn.disabled = false;
+    btn.title = "Abrir foto em nova aba";
+  } else {
+    btn.disabled = true;
+    btn.title = "Sem foto para esta linha";
+  }
+}
+
+function abrirFotoLinha() {
+  if (!FOTO_URL_ATUAL) return;
+  window.open(FOTO_URL_ATUAL, "_blank", "noopener,noreferrer");
+}
 
 /* =========================
    QR / Scanner
@@ -188,7 +214,7 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
-  // Se campo1 vazio -> usa modo h_por_l via Codigo C (seu fluxo novo)
+  // Se campo1 vazio -> usa modo h_por_l via Codigo C
   if (!parte0) {
     if (!codigoC) {
       if (elI) elI.value = "Não encontrado";
@@ -213,7 +239,7 @@ function consultarDados() {
         const h = String(j.h).trim();
         document.getElementById("campo1").value = h;
         setCampo1CorPorTamanho(h);
-        // agora executa consulta normal por H
+        // consulta normal por H
         consultarDados();
       } else {
         logDebug("ConsultarUI: não encontrou ocorrência em L.");
@@ -281,13 +307,8 @@ function consultarDados() {
 }
 
 function formatarCodigoC(apenasNumeros) {
-  // Entrada esperada: apenas números e letras (mas você filtra só números no input).
-  // Você pediu: se entrar 123456789ABC -> C123.456-789.ABC
-  // Como seu campo é “apenas numeros”, vou formatar com 12 dígitos: Cxxx.xxx-xxx.xxx
-  // Se você realmente quiser sufixo ABC, retire o onlyDigits do codigoC.
   const raw = String(apenasNumeros || "").trim();
   const s = raw.replace(/\s+/g, "");
-  // tenta 12 dígitos
   if (s.length >= 12) {
     const a = s.substring(0,3);
     const b = s.substring(3,6);
@@ -295,7 +316,6 @@ function formatarCodigoC(apenasNumeros) {
     const d = s.substring(9,12);
     return `C${a}.${b}-${c}.${d}`;
   }
-  // fallback simples
   return `C${s}`;
 }
 
@@ -421,13 +441,12 @@ function limparCamposAposRegistroOK() {
 async function consultarLinhaInventarioUI() {
   const inp = document.getElementById("linha_consulta");
   const txt = document.getElementById("txt-lin");
-  const img = document.getElementById("foto-preview");
 
   const row = parseInt(String(inp?.value || "").trim(), 10);
   if (!row || row < 2) {
     logDebug("Consultar linha: informe um número de linha válido (>=2).");
     if (txt) txt.value = "Linha inválida (>=2).";
-    if (img) img.style.display = "none";
+    setFotoUrlAtual("");
     return;
   }
 
@@ -441,7 +460,7 @@ async function consultarLinhaInventarioUI() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (!(j && j.ok && j.data)) {
       if (txt) txt.value = "Não encontrado";
-      if (img) img.style.display = "none";
+      setFotoUrlAtual("");
       return;
     }
 
@@ -453,28 +472,19 @@ async function consultarLinhaInventarioUI() {
 
     if (txt) txt.value = resumo;
 
-    // Preview foto
-    const fotoUrl = String(d.fotoUrl || "").trim();
-    if (img) {
-      if (fotoUrl) {
-        img.src = fotoUrl;
-        img.style.display = "block";
-      } else {
-        img.style.display = "none";
-      }
-    }
+    // Atualiza botão Abrir Foto
+    setFotoUrlAtual(d.fotoUrl || "");
 
   } catch (err) {
     logDebug("Erro get_lin: " + err);
     if (txt) txt.value = "Erro ao consultar (ver debug).";
-    if (img) img.style.display = "none";
+    setFotoUrlAtual("");
   }
 }
 
 async function deletarLinhaInventarioUI() {
   const inp = document.getElementById("linha_consulta");
   const txt = document.getElementById("txt-lin");
-  const img = document.getElementById("foto-preview");
 
   const row = parseInt(String(inp?.value || "").trim(), 10);
   if (!row || row < 2) {
@@ -511,7 +521,7 @@ async function deletarLinhaInventarioUI() {
 
     if (j && j.ok && j.cleared) {
       if (txt) txt.value = `Linha ${row} limpa com sucesso.`;
-      if (img) img.style.display = "none";
+      setFotoUrlAtual("");
     } else {
       if (txt) txt.value = "Falha ao limpar linha (ver debug).";
     }
@@ -536,11 +546,9 @@ async function substituirFotoLinhaUI() {
 }
 
 async function selecionarEEnviarFotoParaLinha(row, origem) {
-  // cria input file temporário
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*";
-  // dica para mobile abrir câmera
   fileInput.capture = "environment";
 
   return new Promise((resolve) => {
@@ -555,14 +563,10 @@ async function selecionarEEnviarFotoParaLinha(row, origem) {
 
         logDebug(`Foto OK: row=${j.row} url=${j.fotoUrl}`);
 
-        // Atualiza preview
-        const img = document.getElementById("foto-preview");
-        if (img) {
-          img.src = j.fotoUrl;
-          img.style.display = "block";
-        }
+        // Atualiza botão Abrir Foto
+        setFotoUrlAtual(j.fotoUrl || "");
 
-        // Recarrega linha no txt-lin
+        // Recarrega linha no txt-lin (e reforça fotoUrl)
         await consultarLinhaInventarioUI();
 
       } catch (e) {
@@ -596,7 +600,6 @@ async function uploadFotoParaLinha(row, file) {
 
   logDebug(`POST upload_foto: row=${payload.row}, mime=${payload.mime}, base64_len=${base64.length}`);
 
-  // CRÍTICO: text/plain para evitar preflight (CORS/OPTIONS)
   const resp = await fetch(ENDPOINT_REGISTRO, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -605,7 +608,8 @@ async function uploadFotoParaLinha(row, file) {
 
   const raw = await resp.text();
   logDebug("Resposta upload_foto raw: " + raw);
-logDebug(`upload_foto HTTP status: ${resp.status}`);
+  logDebug("upload_foto HTTP status: " + resp.status);
+
   let j = null;
   try { j = JSON.parse(raw); } catch {}
 
@@ -614,8 +618,3 @@ logDebug(`upload_foto HTTP status: ${resp.status}`);
   }
   return j;
 }
-
-
-
-
-
