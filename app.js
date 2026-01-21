@@ -7,7 +7,7 @@ const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
 
 const ENDPOINT_REGISTRO =
-  "https://script.google.com/a/macros/realguindastes.com/s/AKfycbwFTBzg19Oehw0rQxFi1oVm31st0MouechBMMhNAHnJrj4nrWJKnikI9vAino2E8a_Q/exec";
+  "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxClcs2PLsAt7RjwMxV-ThLMVevpPesjnyH1rDrse6ORbPNgbP4-xAOSuq5O1xIWZ2j/exec";
 
 let html5QrCode;
 let scannerRunning = false;
@@ -614,4 +614,5 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
+
 
