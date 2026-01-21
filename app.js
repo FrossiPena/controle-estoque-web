@@ -1,4 +1,4 @@
-// v4.1-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
+// v4.1b-app - Upload de foto via POST text/plain (evita preflight/CORS), preview em Consultar Linha, substituir foto
 // Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
 
 const APP_VERSION = "v4.1-URL endpoint";
@@ -614,6 +614,7 @@ logDebug(`upload_foto HTTP status: ${resp.status}`);
   }
   return j;
 }
+
 
 
 
