@@ -1,4 +1,4 @@
-<!-- index.html - v3.9 (foto por linha no Drive + preview e substituir) -->
+<!-- index.html - v4.0 (bloco LINHA com preview + substituir foto) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -44,8 +44,12 @@
         <label for="loc-select">Pátio</label>
         <select id="loc-select">
           <option value="">Selecione...</option>
-          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
         </select>
       </div>
 
@@ -72,35 +76,26 @@
 
     <hr class="sep" />
 
-    <!-- BLOCO LINHA -->
     <div class="linha-tools">
-      <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center;">
+      <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <input
           type="text"
           id="linha_consulta"
           placeholder="linha_consulta (ex.: 11)"
           maxlength="3"
-          style="flex: 1;"
+          style="flex: 1; min-width: 180px;"
         />
 
         <button type="button" id="btn-consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
         <button type="button" id="btn-dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
-        <button type="button" id="btn-substfoto" onclick="substituirFotoLinhaUI()">Substituir foto</button>
+        <button type="button" id="btn-substfoto">Substituir foto</button>
       </div>
 
       <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
 
       <!-- Preview da foto -->
-      <img id="foto-preview" alt="Preview da foto" style="display:none;" />
-
-      <!-- Input oculto para capturar foto (camera traseira) -->
-      <input
-        type="file"
-        id="foto-input"
-        accept="image/*"
-        capture="environment"
-        style="display:none;"
-      />
+      <img id="foto-preview" alt="Pré-visualização da foto"
+           style="display:none; width:100%; max-height:240px; object-fit:contain; margin-top:8px; border:1px solid #ccc; border-radius:8px;" />
     </div>
 
     <hr class="sep" />
