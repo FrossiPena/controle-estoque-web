@@ -605,7 +605,7 @@ async function uploadFotoParaLinha(row, file) {
 
   const raw = await resp.text();
   logDebug("Resposta upload_foto raw: " + raw);
-
+logDebug(`upload_foto HTTP status: ${resp.status}`);
   let j = null;
   try { j = JSON.parse(raw); } catch {}
 
@@ -614,5 +614,6 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
+
 
 
