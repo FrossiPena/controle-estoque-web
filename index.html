@@ -93,10 +93,13 @@
 
       <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
 
-      <!-- Preview da foto -->
-      <img id="foto-preview" alt="Pré-visualização da foto"
-           style="display:none; width:100%; max-height:240px; object-fit:contain; margin-top:8px; border:1px solid #ccc; border-radius:8px;" />
-    </div>
+      <div class="foto-link-row" style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+  <a id="foto-link" href="#" target="_blank" rel="noopener noreferrer" style="flex:1; display:none;">
+    <button type="button" id="btn-abrirfoto" style="width:100%;">Abrir foto</button>
+  </a>
+
+  <button type="button" id="btn-substfoto">Substituir foto</button>
+</div>
 
     <hr class="sep" />
 
@@ -121,3 +124,4 @@
   <script src="app.js"></script>
 </body>
 </html>
+
