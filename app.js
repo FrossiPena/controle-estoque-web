@@ -1,8 +1,9 @@
-// v5.0 - FIX: após upload/registrar, preenche linha_consulta com o row e consulta a linha correta
-// Mantém: botão Abrir Foto, QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin, upload_foto via POST text/plain
+// v5.1 - 4 fotos por linha (I..L): abrir foto 1..4, substituir com escolha 1..4, upload grava row_slot.ext
+// Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
 
-const APP_VERSION = "v5.0-fix-consulta-linha-pos-upload";
+const APP_VERSION = "v5.1";
 
+// ENDPOINTS (com domínio)
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
 
@@ -15,7 +16,6 @@ let leituraProcessada = false;
 let lastHandledAt = 0;
 
 let gpsString = "";
-let FOTO_URL_ATUAL = "";
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -49,27 +49,22 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(rua, "Rua");
   onlyDigits(andar, "Andar");
   onlyDigits(numInv, "NumInv");
-  onlyDigits(codigoC, "Codigo C"); // “apenas numeros”
+  onlyDigits(codigoC, "Codigo C");
 
-  if (campo1) {
-    campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
-  }
+  if (campo1) campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
 
+  // Substituir foto (pede slot 1..4)
   const btnSub = document.getElementById("btn-substfoto");
-  if (btnSub) {
-    btnSub.addEventListener("click", () => substituirFotoLinhaUI());
-  }
+  if (btnSub) btnSub.addEventListener("click", () => substituirFotoLinhaUI());
 
-  setFotoUrlAtual("");
+  atualizarLinksFotos({ fotoUrl: "", fotoUrl2: "", fotoUrl3: "", fotoUrl4: "" });
 });
 
 function setCampo1CorPorTamanho(valor) {
   const el = document.getElementById("campo1");
   if (!el) return;
-
   el.classList.remove("campo1-ok", "campo1-bad");
   const len = (valor || "").length;
-
   if (len === 9) el.classList.add("campo1-ok");
   else el.classList.add("campo1-bad");
 }
@@ -78,26 +73,27 @@ function limparDebug() { const el = document.getElementById("debug-log"); if (el
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
 /* =========================
-   FOTO: botão Abrir Foto
+   Helpers - Links de fotos
 ========================= */
 
-function setFotoUrlAtual(url) {
-  FOTO_URL_ATUAL = String(url || "").trim();
-  const btn = document.getElementById("btn-abrirfoto");
-  if (!btn) return;
-
-  if (FOTO_URL_ATUAL) {
-    btn.disabled = false;
-    btn.title = "Abrir foto em nova aba";
+function setLink(id, url) {
+  const a = document.getElementById(id);
+  if (!a) return;
+  const u = String(url || "").trim();
+  if (u) {
+    a.href = u;
+    a.style.display = "block";
   } else {
-    btn.disabled = true;
-    btn.title = "Sem foto para esta linha";
+    a.href = "#";
+    a.style.display = "none";
   }
 }
 
-function abrirFotoLinha() {
-  if (!FOTO_URL_ATUAL) return;
-  window.open(FOTO_URL_ATUAL, "_blank", "noopener,noreferrer");
+function atualizarLinksFotos(data) {
+  setLink("foto-link1", data.fotoUrl || "");
+  setLink("foto-link2", data.fotoUrl2 || "");
+  setLink("foto-link3", data.fotoUrl3 || "");
+  setLink("foto-link4", data.fotoUrl4 || "");
 }
 
 /* =========================
@@ -187,7 +183,6 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("campo2").value = parte1Limpo;
 
   setCampo1CorPorTamanho(parte0);
-
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
 
   consultarDados();
@@ -212,6 +207,7 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
+  // Campo1 vazio => h_por_l via Codigo C
   if (!parte0) {
     if (!codigoC) {
       if (elI) elI.value = "Não encontrado";
@@ -249,6 +245,7 @@ function consultarDados() {
     return;
   }
 
+  // Fluxo normal
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
   if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
@@ -292,7 +289,7 @@ function consultarDados() {
   });
 
   const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
-  logDebug("GET Descrição Português (H->L[16]->Relação[H]->B): " + urlDescPT);
+  logDebug("GET Descrição Português (H->...): " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
@@ -404,13 +401,20 @@ async function registrarMovimentacaoUI() {
       if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
 
-      const querFoto = confirm(`Deseja tirar/selecionar uma foto para a linha ${j.row}?`);
+      // Mantém a linha no campo linha_consulta (ajuda para abrir foto/consultar depois)
+      const inpLinha = document.getElementById("linha_consulta");
+      if (inpLinha) inpLinha.value = String(j.row);
+
+      const querFoto = confirm(`Deseja adicionar uma foto para a linha ${j.row}?`);
       if (querFoto) {
-        await selecionarEEnviarFotoParaLinha(j.row, "registrar");
+        const slot = perguntarSlotFoto();
+        if (slot) {
+          await selecionarEEnviarFotoParaLinha(j.row, slot, "registrar");
+          await consultarLinhaInventario(j.row); // atualiza txt-lin + links
+        }
       }
 
       limparCamposAposRegistroOK();
-
     } else {
       if (status) status.innerText = "Falha ao registrar (ver debug).";
       logDebug("Registrar: resposta inválida/sem ok.");
@@ -428,65 +432,59 @@ function limparCamposAposRegistroOK() {
 }
 
 /* =========================
-   LINHA: consulta por row (novo helper)
-========================= */
-
-async function consultarLinhaInventarioPorRow(row) {
-  const txt = document.getElementById("txt-lin");
-
-  if (!row || row < 2) {
-    logDebug("ConsultarPorRow: row inválido (>=2).");
-    if (txt) txt.value = "Linha inválida (>=2).";
-    setFotoUrlAtual("");
-    return;
-  }
-
-  const url = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
-  logDebug("GET Consultar linha (get_lin) [porRow]: " + url);
-
-  try {
-    const raw = await (await fetch(url)).text();
-    logDebug("Resposta get_lin raw [porRow]: " + raw);
-
-    let j=null; try{ j=JSON.parse(raw); }catch{}
-    if (!(j && j.ok && j.data)) {
-      if (txt) txt.value = "Não encontrado";
-      setFotoUrlAtual("");
-      return;
-    }
-
-    const d = j.data;
-    const resumo =
-      `Linha ${row} | NumInv=${d.numInv || ""} | Campo1=${d.campo1 || ""} | Campo2=${d.campo2 || ""} | ` +
-      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | DataHora=${d.dataHora || ""}`;
-
-    if (txt) txt.value = resumo;
-    setFotoUrlAtual(d.fotoUrl || "");
-
-  } catch (err) {
-    logDebug("Erro get_lin [porRow]: " + err);
-    if (txt) txt.value = "Erro ao consultar (ver debug).";
-    setFotoUrlAtual("");
-  }
-}
-
-/* =========================
    LINHA: consultar / deletar (clear)
 ========================= */
 
 async function consultarLinhaInventarioUI() {
   const inp = document.getElementById("linha_consulta");
   const row = parseInt(String(inp?.value || "").trim(), 10);
+  await consultarLinhaInventario(row);
+}
+
+async function consultarLinhaInventario(row) {
+  const txt = document.getElementById("txt-lin");
 
   if (!row || row < 2) {
     logDebug("Consultar linha: informe um número de linha válido (>=2).");
-    const txt = document.getElementById("txt-lin");
     if (txt) txt.value = "Linha inválida (>=2).";
-    setFotoUrlAtual("");
+    atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
     return;
   }
 
-  await consultarLinhaInventarioPorRow(row);
+  const url = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
+  logDebug("GET Consultar linha (get_lin): " + url);
+
+  try {
+    const raw = await (await fetch(url)).text();
+    logDebug("Resposta get_lin raw: " + raw);
+
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (!(j && j.ok && j.data)) {
+      if (txt) txt.value = "Não encontrado";
+      atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+      return;
+    }
+
+    const d = j.data;
+
+    const resumo =
+      `Linha ${row} | NumInv=${d.numInv || ""} | Campo1=${d.campo1 || ""} | Campo2=${d.campo2 || ""} | ` +
+      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | DataHora=${d.dataHora || ""}`;
+
+    if (txt) txt.value = resumo;
+
+    atualizarLinksFotos({
+      fotoUrl: d.fotoUrl || "",
+      fotoUrl2: d.fotoUrl2 || "",
+      fotoUrl3: d.fotoUrl3 || "",
+      fotoUrl4: d.fotoUrl4 || ""
+    });
+
+  } catch (err) {
+    logDebug("Erro get_lin: " + err);
+    if (txt) txt.value = "Erro ao consultar (ver debug).";
+    atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+  }
 }
 
 async function deletarLinhaInventarioUI() {
@@ -500,6 +498,7 @@ async function deletarLinhaInventarioUI() {
     return;
   }
 
+  // Consulta antes para exibir resumo
   const urlGet = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
   logDebug("GET (pré-delete) get_lin: " + urlGet);
 
@@ -527,7 +526,7 @@ async function deletarLinhaInventarioUI() {
 
     if (j && j.ok && j.cleared) {
       if (txt) txt.value = `Linha ${row} limpa com sucesso.`;
-      setFotoUrlAtual("");
+      atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
     } else {
       if (txt) txt.value = "Falha ao limpar linha (ver debug).";
     }
@@ -538,24 +537,41 @@ async function deletarLinhaInventarioUI() {
 }
 
 /* =========================
-   FOTO: selecionar / substituir
+   FOTO: substituir (slot 1..4)
 ========================= */
+
+function perguntarSlotFoto() {
+  const ans = prompt("Qual foto deseja usar/substituir? Digite 1, 2, 3 ou 4:", "1");
+  if (ans == null) return 0;
+  const slot = parseInt(String(ans).trim(), 10);
+  if (![1,2,3,4].includes(slot)) {
+    alert("Valor inválido. Digite 1, 2, 3 ou 4.");
+    return 0;
+  }
+  return slot;
+}
 
 async function substituirFotoLinhaUI() {
   const inp = document.getElementById("linha_consulta");
   const row = parseInt(String(inp?.value || "").trim(), 10);
   if (!row || row < 2) {
     logDebug("Substituir foto: informe linha válida (>=2).");
+    alert("Informe uma linha válida (>=2) em linha_consulta.");
     return;
   }
-  await selecionarEEnviarFotoParaLinha(row, "substituir");
+
+  const slot = perguntarSlotFoto();
+  if (!slot) return;
+
+  await selecionarEEnviarFotoParaLinha(row, slot, "substituir");
+  await consultarLinhaInventario(row);
 }
 
-async function selecionarEEnviarFotoParaLinha(row, origem) {
+async function selecionarEEnviarFotoParaLinha(row, slot, origem) {
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*";
-  fileInput.capture = "environment";
+  fileInput.capture = "environment"; // ajuda no mobile
 
   return new Promise((resolve) => {
     fileInput.onchange = async () => {
@@ -563,19 +579,11 @@ async function selecionarEEnviarFotoParaLinha(row, origem) {
         const file = fileInput.files && fileInput.files[0];
         if (!file) { resolve(); return; }
 
-        logDebug(`Foto selecionada (${origem}). row=${row}, name=${file.name}, type=${file.type}, size=${file.size}`);
+        logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
 
-        const j = await uploadFotoParaLinha(row, file);
+        const j = await uploadFotoParaLinha(row, slot, file);
 
-        logDebug(`Foto OK: row=${j.row} url=${j.fotoUrl}`);
-        setFotoUrlAtual(j.fotoUrl || "");
-
-        // FIX: garante que o campo linha_consulta fique com o row recém-usado
-        const inpLinha = document.getElementById("linha_consulta");
-        if (inpLinha) inpLinha.value = String(row);
-
-        // FIX: consulta a linha certa sem depender do input
-        await consultarLinhaInventarioPorRow(row);
+        logDebug(`Foto OK: row=${j.row} slot=${j.slot} url=${j.fotoUrl}`);
 
       } catch (e) {
         logDebug("Erro ao processar/enviar foto: " + e);
@@ -587,7 +595,7 @@ async function selecionarEEnviarFotoParaLinha(row, origem) {
   });
 }
 
-async function uploadFotoParaLinha(row, file) {
+async function uploadFotoParaLinha(row, slot, file) {
   const base64 = await new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => {
@@ -602,11 +610,12 @@ async function uploadFotoParaLinha(row, file) {
   const payload = {
     mode: "upload_foto",
     row: Number(row),
+    slot: Number(slot),
     mime: file.type || "image/jpeg",
     base64
   };
 
-  logDebug(`POST upload_foto: row=${payload.row}, mime=${payload.mime}, base64_len=${base64.length}`);
+  logDebug(`POST upload_foto: row=${payload.row}, slot=${payload.slot}, mime=${payload.mime}, base64_len=${base64.length}`);
 
   const resp = await fetch(ENDPOINT_REGISTRO, {
     method: "POST",
@@ -616,7 +625,7 @@ async function uploadFotoParaLinha(row, file) {
 
   const raw = await resp.text();
   logDebug("Resposta upload_foto raw: " + raw);
-  logDebug("upload_foto HTTP status: " + resp.status);
+  logDebug(`upload_foto HTTP status: ${resp.status}`);
 
   let j = null;
   try { j = JSON.parse(raw); } catch {}
@@ -626,5 +635,3 @@ async function uploadFotoParaLinha(row, file) {
   }
   return j;
 }
-
-
