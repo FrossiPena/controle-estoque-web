@@ -1,4 +1,4 @@
-<!-- index.html - v5.2 (Abrir Foto 1..4 sempre visíveis / disabled quando vazio + modal para abrir câmera) -->
+<!-- index.html - v5.2.1 (Observações + modal foto fecha automático) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -30,6 +30,9 @@
       <input type="text" id="campo3" placeholder="Campo 3" readonly />
       <input type="text" id="campo4" placeholder="Campo 4" readonly />
     </div>
+
+    <!-- NOVO: Observações (vai para coluna M = OBS) -->
+    <textarea id="obs-input" placeholder="Observações (vai para OBS na planilha)" rows="2"></textarea>
 
     <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
     <hr class="sep" />
@@ -122,15 +125,13 @@
     </div>
   </div>
 
-  <!-- Input escondido para câmera/arquivo (aberto somente por clique do usuário) -->
+  <!-- Input escondido para câmera/arquivo -->
   <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none;" />
 
-  <!-- Modal simples (inline) para garantir gesto do usuário no mobile -->
+  <!-- Modal para garantir gesto do usuário no mobile -->
   <div id="foto-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; padding:16px;">
     <div style="max-width:520px; margin:12vh auto 0; background:#fff; border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);">
-      <div id="foto-modal-text" style="margin-bottom:12px; font-weight:600;">
-        Foto
-      </div>
+      <div id="foto-modal-text" style="margin-bottom:12px; font-weight:600;">Foto</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button type="button" id="foto-modal-open" style="flex:1; min-width:220px;">Abrir câmera / selecionar arquivo</button>
         <button type="button" id="foto-modal-cancel" style="flex:1; min-width:160px;">Cancelar</button>
