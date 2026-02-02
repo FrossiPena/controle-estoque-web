@@ -1,7 +1,8 @@
-// v5.2 - Botões Abrir Foto 1..4 sempre visíveis (disabled quando sem URL)
-//     + correção do “glitch” do mobile: abre câmera/arquivo somente via clique do usuário (modal)
+// v5.2.1 - Modal foto fecha automático após selecionar
+//        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
+//        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.2";
+const APP_VERSION = "v5.2.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -16,10 +17,10 @@ let lastHandledAt = 0;
 
 let gpsString = "";
 
-// Guarda URLs das fotos do último get_lin
+// URLs das fotos do último get_lin
 let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
 
-// Controle do upload via modal (evita bloqueio de câmera no mobile)
+// Modal/upload control
 let pendingFoto = null; // {row, slot, origem}
 
 function logDebug(msg) {
@@ -62,16 +63,15 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnSub = document.getElementById("btn-substfoto");
   if (btnSub) btnSub.addEventListener("click", () => substituirFotoLinhaUI());
 
-  // Modal handlers (crítico para mobile)
+  // Modal handlers
   const btnOpen = document.getElementById("foto-modal-open");
   const btnCancel = document.getElementById("foto-modal-cancel");
   const fileInput = document.getElementById("foto-input");
 
   if (btnOpen && fileInput) {
     btnOpen.addEventListener("click", () => {
-      // reset para permitir escolher o mesmo arquivo novamente
-      fileInput.value = "";
-      fileInput.click(); // <-- agora é gesto do usuário, não bloqueia
+      fileInput.value = ""; // permite escolher o mesmo arquivo novamente
+      fileInput.click();    // gesto do usuário => mobile abre câmera
     });
   }
 
@@ -84,35 +84,35 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (fileInput) {
     fileInput.addEventListener("change", async () => {
+      // ✅ FECHA O MODAL IMEDIATAMENTE após tirar/selecionar (pedido do usuário)
+      fecharModalFoto();
+
       try {
         const file = fileInput.files && fileInput.files[0];
-        if (!file) { fecharModalFoto(); pendingFoto = null; return; }
+        if (!file) { pendingFoto = null; return; }
 
         if (!pendingFoto || !pendingFoto.row || !pendingFoto.slot) {
           logDebug("foto-input: pendingFoto vazio. Cancelando upload.");
-          fecharModalFoto();
           pendingFoto = null;
           return;
         }
 
         const { row, slot, origem } = pendingFoto;
+        pendingFoto = null;
 
         logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
+
         const j = await uploadFotoParaLinha(row, slot, file);
         logDebug(`Foto OK: row=${j.row} slot=${j.slot} url=${j.fotoUrl}`);
 
-        await consultarLinhaInventario(row); // atualiza resumo + habilita botões
-
+        await consultarLinhaInventario(row); // atualiza resumo + habilita/desabilita botões
       } catch (e) {
         logDebug("Erro ao processar/enviar foto: " + e);
-      } finally {
-        fecharModalFoto();
-        pendingFoto = null;
       }
     });
   }
 
-  // Inicializa botões sempre visíveis e desabilitados
+  // Inicializa botões visíveis e desabilitados
   atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
 });
 
@@ -147,13 +147,9 @@ function atualizarBotoesFotos(d) {
   }
 }
 
-// onclick do HTML
 function abrirFoto(slot) {
   const url = FOTO_URLS[Number(slot)] || "";
-  if (!url) {
-    logDebug(`Abrir Foto ${slot}: sem URL (botão deveria estar disabled).`);
-    return;
-  }
+  if (!url) return;
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
@@ -269,7 +265,7 @@ function processarQRCode(qrCodeMessage) {
 }
 
 /* =========================
-   CONSULTA (Consolidado) - mantida
+   CONSULTA (Consolidado) - mantém seu fluxo atual
 ========================= */
 
 function consultarDados() {
@@ -367,7 +363,7 @@ function consultarDados() {
   });
 
   const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
-  logDebug("GET Descrição Português (H->...): " + urlDescPT);
+  logDebug("GET Descrição Português: " + urlDescPT);
   fetch(urlDescPT).then(r=>r.text()).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
@@ -429,6 +425,8 @@ async function registrarMovimentacaoUI() {
   const andar = (document.getElementById("andar-input")?.value || "").trim();
   const numInv = (document.getElementById("numinv-input")?.value || "").trim();
 
+  const obs = (document.getElementById("obs-input")?.value || "").trim();
+
   const gpsOn = !!document.getElementById("gps-check")?.checked;
 
   campo2 = campo2.replace(/^0+/, "");
@@ -464,7 +462,8 @@ async function registrarMovimentacaoUI() {
     `&rua=${encodeURIComponent(rua)}` +
     `&andar=${encodeURIComponent(andar)}` +
     `&gpsString=${encodeURIComponent(gpsString)}` +
-    `&numInv=${encodeURIComponent(numInv)}`;
+    `&numInv=${encodeURIComponent(numInv)}` +
+    `&obs=${encodeURIComponent(obs)}`;
 
   logDebug("GET Registrar (log_mov): " + urlLog);
 
@@ -479,18 +478,13 @@ async function registrarMovimentacaoUI() {
       if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
 
-      // Preenche linha_consulta para facilitar abrir/substituir depois
       const inpLinha = document.getElementById("linha_consulta");
       if (inpLinha) inpLinha.value = String(j.row);
 
-      // Pergunta se quer foto
-      const querFoto = confirm(`Deseja adicionar uma foto para a linha ${j.row}?`);
+      // ✅ NOVO: registrar => foto óbvia = #1 (sem perguntar slot)
+      const querFoto = confirm(`Deseja adicionar uma foto (Foto 1) para a linha ${j.row}?`);
       if (querFoto) {
-        const slot = perguntarSlotFoto();
-        if (slot) {
-          // Abre modal: usuário clica no botão e aí sim a câmera abre no celular
-          abrirModalFoto(j.row, slot, "registrar");
-        }
+        abrirModalFoto(j.row, 1, "registrar");
       }
 
       limparCamposAposRegistroOK();
@@ -505,7 +499,8 @@ async function registrarMovimentacaoUI() {
 }
 
 function limparCamposAposRegistroOK() {
-  const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input"];
+  // limpa itens por item
+  const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input","obs-input"];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   setCampo1CorPorTamanho("");
 }
@@ -548,7 +543,7 @@ async function consultarLinhaInventario(row) {
 
     const resumo =
       `Linha ${row} | NumInv=${d.numInv || ""} | Campo1=${d.campo1 || ""} | Campo2=${d.campo2 || ""} | ` +
-      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | DataHora=${d.dataHora || ""}`;
+      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | OBS=${d.obs || ""} | DataHora=${d.dataHora || ""}`;
 
     if (txt) txt.value = resumo;
 
