@@ -2,7 +2,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.2.1";
+const APP_VERSION = "v5.3.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -23,6 +23,90 @@ let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
 // Modal/upload control
 let pendingFoto = null; // {row, slot, origem}
 
+/* =========================
+   UI: Menu lateral + telas
+========================= */
+
+let CURRENT_SCREEN = "consulta";
+
+function setScreenName(nome) {
+  const el = document.getElementById("screenName");
+  if (el) el.textContent = nome || "";
+}
+
+function openMenu() {
+  document.getElementById("sidebar")?.classList.add("open");
+  document.getElementById("overlay")?.classList.add("show");
+}
+
+function closeMenu() {
+  document.getElementById("sidebar")?.classList.remove("open");
+  document.getElementById("overlay")?.classList.remove("show");
+}
+
+function showScreen(key) {
+  const map = {
+    consulta: { id: "screen-consulta", name: "Consulta ítem" },
+    cadastro: { id: "screen-cadastro", name: "Cadastro" },
+    inventario: { id: "screen-inventario", name: "Consultar Inventário" },
+    debug: { id: "screen-debug", name: "Debug" },
+  };
+
+  Object.keys(map).forEach(k => {
+    const sec = document.getElementById(map[k].id);
+    if (sec) sec.hidden = (k !== key);
+  });
+
+  document.querySelectorAll(".nav button").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.screen === key);
+  });
+
+  CURRENT_SCREEN = key;
+  setScreenName(map[key]?.name || "");
+}
+
+/* =========================
+   UI: Binding (campo1/campo2 duplicados no Cadastro)
+========================= */
+
+function setCampo1Classes(el, valor) {
+  if (!el) return;
+  el.classList.remove("campo1-ok", "campo1-bad");
+  const len = (String(valor || "").trim()).length;
+  if (len === 9) el.classList.add("campo1-ok");
+  else el.classList.add("campo1-bad");
+}
+
+function syncCampo1ToCadastro() {
+  const master = document.getElementById("campo1");
+  const slave  = document.getElementById("campo1_cad");
+  if (!master || !slave) return;
+  slave.value = master.value;
+  setCampo1Classes(master, master.value);
+  setCampo1Classes(slave, slave.value);
+}
+
+function syncCampo2ToCadastro() {
+  const master = document.getElementById("campo2");
+  const slave  = document.getElementById("campo2_cad");
+  if (!master || !slave) return;
+  slave.value = master.value;
+}
+
+function syncCadastroToMaster() {
+  const master1 = document.getElementById("campo1");
+  const slave1  = document.getElementById("campo1_cad");
+  if (master1 && slave1) {
+    master1.value = slave1.value;
+    setCampo1Classes(master1, master1.value);
+    setCampo1Classes(slave1, slave1.value);
+  }
+
+  const master2 = document.getElementById("campo2");
+  const slave2  = document.getElementById("campo2_cad");
+  if (master2 && slave2) master2.value = slave2.value;
+}
+
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
   const ts = new Date().toLocaleTimeString();
@@ -34,11 +118,39 @@ logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
 
 window.addEventListener("DOMContentLoaded", () => {
+
+  // Menu lateral
+  const btnMenu = document.getElementById("btnMenu");
+  const btnClose = document.getElementById("btnClose");
+  const overlay = document.getElementById("overlay");
+
+  if (btnMenu) btnMenu.addEventListener("click", openMenu);
+  if (btnClose) btnClose.addEventListener("click", closeMenu);
+  if (overlay) overlay.addEventListener("click", closeMenu);
+
+  document.querySelectorAll(".nav button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      showScreen(btn.dataset.screen);
+      closeMenu();
+    });
+  });
+
+  // ESC fecha o menu
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
+
+  // Tela padrão
+  showScreen("consulta");
+
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
   const campo1 = document.getElementById("campo1");
   const codigoC = document.getElementById("codigo-c-input");
   const numInv = document.getElementById("numinv-input");
+  const campo1Cad = document.getElementById("campo1_cad");
+  const campo2Cad = document.getElementById("campo2_cad");
+
 
   function onlyDigits(el, label) {
     if (!el) return;
@@ -58,6 +170,18 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(codigoC, "Codigo C");
 
   if (campo1) campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
+
+  // Bind: master (Consulta) <-> Cadastro (duplicados)
+  if (campo1) campo1.addEventListener("input", () => { syncCampo1ToCadastro(); });
+  if (campo2) campo2.addEventListener("input", () => { syncCampo2ToCadastro(); });
+
+  if (campo1Cad) campo1Cad.addEventListener("input", () => { syncCadastroToMaster(); });
+  if (campo2Cad) campo2Cad.addEventListener("input", () => { syncCadastroToMaster(); });
+
+  // Inicializa duplicados
+  syncCampo1ToCadastro();
+  syncCampo2ToCadastro();
+
 
   // Substituir foto (pede slot 1..4)
   const btnSub = document.getElementById("btn-substfoto");
@@ -118,11 +242,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
 function setCampo1CorPorTamanho(valor) {
   const el = document.getElementById("campo1");
-  if (!el) return;
-  el.classList.remove("campo1-ok", "campo1-bad");
-  const len = (valor || "").length;
-  if (len === 9) el.classList.add("campo1-ok");
-  else el.classList.add("campo1-bad");
+  setCampo1Classes(el, valor);
+  const elCad = document.getElementById("campo1_cad");
+  setCampo1Classes(elCad, valor);
 }
 
 function limparDebug() { const el = document.getElementById("debug-log"); if (el) el.value = ""; }
@@ -257,6 +379,10 @@ function processarQRCode(qrCodeMessage) {
   document.getElementById("codigo-lido").value = qrCodeMessage;
   document.getElementById("campo1").value = parte0;
   document.getElementById("campo2").value = parte1Limpo;
+
+  // sincroniza duplicados no Cadastro
+  syncCampo1ToCadastro();
+  syncCampo2ToCadastro();
 
   setCampo1CorPorTamanho(parte0);
   logDebug(`Parte[1] original: ${parte1Original} | limpa: ${parte1Limpo}`);
@@ -503,7 +629,10 @@ function limparCamposAposRegistroOK() {
   const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input","obs-input"];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   setCampo1CorPorTamanho("");
+  syncCampo1ToCadastro();
+  syncCampo2ToCadastro();
 }
+
 
 /* =========================
    LINHA: consultar / deletar (clear)
