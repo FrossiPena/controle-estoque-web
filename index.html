@@ -1,129 +1,178 @@
-<!-- index.html - v5.2.1 (Observações + modal foto fecha automático) -->
+<!-- index.html - v5.3.0 (Menu lateral + 4 telas) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style_v5.3.0.css" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
 <body>
-  <div class="container">
-    <h1>Controle de Estoque</h1>
+  <!-- Topbar -->
+  <header class="topbar">
+    <button class="hamburger" id="btnMenu" type="button" aria-label="Abrir menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
 
-    <div class="scanner-buttons">
-      <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
-      <button type="button" onclick="pararLeitor()">Parar Leitura</button>
+    <div class="brand">
+      <div class="title">Controle de Estoque</div>
+      <div class="subtitle" id="screenName">Consulta ítem</div>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <strong>Menu</strong>
+      <button class="close-btn" id="btnClose" type="button" aria-label="Fechar menu">✕</button>
     </div>
 
-    <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
-    <p id="qr-result">Aguardando leitura...</p>
+    <nav class="nav">
+      <button type="button" data-screen="consulta" class="active">1) Consulta ítem</button>
+      <button type="button" data-screen="cadastro">2) Cadastro</button>
+      <button type="button" data-screen="inventario">3) Consultar Inventário</button>
+      <button type="button" data-screen="debug">4) Debug</button>
+    </nav>
+  </aside>
+  <div class="overlay" id="overlay"></div>
 
-    <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
-    <hr class="sep" />
+  <!-- Conteúdo / Frames -->
+  <main class="main">
+    <!-- 1) Consulta ítem -->
+    <section class="frame" id="screen-consulta">
+      <h2>Consulta ítem</h2>
 
-    <div class="parsed-fields">
-      <input type="text" id="campo1" placeholder="Codigo 9" />
-      <input type="text" id="campo2" placeholder="Codigo Individual" />
-      <input type="text" id="campo3" placeholder="Campo 3" readonly />
-      <input type="text" id="campo4" placeholder="Campo 4" readonly />
-    </div>
+      <div class="scanner-buttons">
+        <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
+        <button type="button" onclick="pararLeitor()">Parar leitura</button>
+      </div>
 
-    <!-- NOVO: Observações (vai para coluna M = OBS) -->
-    <textarea id="obs-input" placeholder="Observações (vai para OBS na planilha)" rows="2"></textarea>
+      <div id="qr-reader" class="qr-reader"></div>
+      <p id="qr-result" class="qr-status">Aguardando leitura...</p>
 
-    <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
-    <hr class="sep" />
+      <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
 
-    <div class="loc-row">
-      <label for="numinv-input">Inventário</label>
-      <input type="text" id="numinv-input" placeholder="NumInv (apenas números)" />
-    </div>
+      <div class="parsed-fields">
+        <input type="text" id="campo1" placeholder="Codigo 9" />
+        <input type="text" id="campo2" placeholder="Codigo individual" />
+      </div>
 
-    <div class="loc-fields">
+      <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
+
+      <input type="text" id="descricao-pt" placeholder="Descrição portugues" readonly />
+      <textarea id="gruas-aplicaveis" placeholder="Gruas Aplicáveis" readonly></textarea>
+      <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
+      <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
+
+      <div class="hint">
+        Dica: ao ler o QR Code, a consulta é feita automaticamente.
+      </div>
+    </section>
+
+    <!-- 2) Cadastro -->
+    <section class="frame" id="screen-cadastro" hidden>
+      <h2>Cadastro</h2>
+
+      <div class="parsed-fields">
+        <input type="text" id="campo1_cad" placeholder="Codigo 9" />
+        <input type="text" id="campo2_cad" placeholder="Codigo individual" />
+      </div>
+
+      <textarea id="obs-input" placeholder="Observações" rows="2"></textarea>
+
       <div class="loc-row">
-        <label for="loc-select">Pátio</label>
-        <select id="loc-select">
-          <option value="">Selecione...</option>
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-        </select>
+        <label for="numinv-input">Inventário</label>
+        <input type="text" id="numinv-input" placeholder="NumInv (apenas números)" />
       </div>
 
-      <div class="loc-row">
-        <label for="rua-input">Rua</label>
-        <input type="text" id="rua-input" placeholder="Apenas números" />
+      <div class="loc-fields">
+        <div class="loc-row">
+          <label for="loc-select">Pátio</label>
+          <select id="loc-select">
+            <option value="">Selecione...</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </div>
+
+        <div class="loc-row">
+          <label for="rua-input">Rua</label>
+          <input type="text" id="rua-input" placeholder="Apenas números" />
+        </div>
+
+        <div class="loc-row">
+          <label for="andar-input">Andar</label>
+          <input type="text" id="andar-input" placeholder="Apenas números" />
+        </div>
       </div>
 
-      <div class="loc-row">
-        <label for="andar-input">Andar</label>
-        <input type="text" id="andar-input" placeholder="Apenas números" />
-      </div>
-    </div>
+      <div class="consulta-actions">
+        <button type="button" id="btn-consultar" onclick="consultarDados()">Consultar</button>
+        <button type="button" id="btn-registrar" onclick="registrarMovimentacaoUI()">Registrar</button>
 
-    <div class="consulta-actions">
-      <button type="button" id="btn-consultar" onclick="consultarDados()">Consultar</button>
-      <button type="button" id="btn-registrar" onclick="registrarMovimentacaoUI()">Registrar</button>
-
-      <label class="gps-inline">
-        <input type="checkbox" id="gps-check" />
-        GPS
-      </label>
-    </div>
-
-    <hr class="sep" />
-
-    <div class="linha-tools">
-      <div class="linha-tools-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <input
-          type="text"
-          id="linha_consulta"
-          placeholder="linha_consulta (ex.: 11)"
-          maxlength="3"
-          style="flex: 1; min-width: 180px;"
-        />
-
-        <button type="button" id="btn-consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
-        <button type="button" id="btn-dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
-        <button type="button" id="btn-substfoto">Substituir foto</button>
+        <label class="gps-inline">
+          <input type="checkbox" id="gps-check" />
+          GPS
+        </label>
       </div>
 
-      <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
-
-      <!-- Botões SEMPRE visíveis: ficam disabled quando não existe URL -->
-      <div class="foto-links" style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-        <button type="button" id="btn-abrirfoto1" onclick="abrirFoto(1)" disabled style="flex:1; min-width:160px;">Abrir Foto 1</button>
-        <button type="button" id="btn-abrirfoto2" onclick="abrirFoto(2)" disabled style="flex:1; min-width:160px;">Abrir Foto 2</button>
-        <button type="button" id="btn-abrirfoto3" onclick="abrirFoto(3)" disabled style="flex:1; min-width:160px;">Abrir Foto 3</button>
-        <button type="button" id="btn-abrirfoto4" onclick="abrirFoto(4)" disabled style="flex:1; min-width:160px;">Abrir Foto 4</button>
+      <div class="status-wrap">
+        <label>Status</label>
+        <p id="status-msg"></p>
       </div>
-    </div>
+    </section>
 
-    <hr class="sep" />
+    <!-- 3) Consultar Inventário -->
+    <section class="frame" id="screen-inventario" hidden>
+      <h2>Consultar Inventário</h2>
 
-    <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
-    <input type="text" id="descricao-pt" placeholder="Descrição Português" readonly />
-    <textarea id="gruas-aplicaveis" placeholder="Gruas aplicáveis" readonly></textarea>
-    <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
+      <div class="linha-tools">
+        <div class="linha-tools-row">
+          <input
+            type="text"
+            id="linha_consulta"
+            placeholder="linha_consulta (ex.: 11)"
+            maxlength="3"
+          />
 
-    <p id="status-msg"></p>
+          <button type="button" id="btn-consultlin" onclick="consultarLinhaInventarioUI()">Consultar</button>
+          <button type="button" id="btn-dellin" onclick="deletarLinhaInventarioUI()">Deletar</button>
+          <button type="button" id="btn-substfoto">Substituir foto</button>
+        </div>
 
-    <div class="debug-wrap">
-      <label for="debug-log">Debug</label>
-      <textarea id="debug-log" rows="10" readonly></textarea>
+        <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
 
-      <div class="debug-actions">
-        <button type="button" onclick="limparDebug()">Limpar log</button>
-        <button type="button" onclick="copiarDebug()">Copiar log</button>
+        <div class="foto-links">
+          <button type="button" id="btn-abrirfoto1" onclick="abrirFoto(1)" disabled>Abrir Foto 1</button>
+          <button type="button" id="btn-abrirfoto2" onclick="abrirFoto(2)" disabled>Abrir Foto 2</button>
+          <button type="button" id="btn-abrirfoto3" onclick="abrirFoto(3)" disabled>Abrir Foto 3</button>
+          <button type="button" id="btn-abrirfoto4" onclick="abrirFoto(4)" disabled>Abrir Foto 4</button>
+        </div>
       </div>
-    </div>
-  </div>
+    </section>
+
+    <!-- 4) Debug -->
+    <section class="frame" id="screen-debug" hidden>
+      <h2>Debug</h2>
+
+      <div class="debug-wrap">
+        <textarea id="debug-log" rows="12" readonly></textarea>
+
+        <div class="debug-actions">
+          <button type="button" onclick="limparDebug()">Limpar log</button>
+          <button type="button" onclick="copiarDebug()">Copiar log</button>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <!-- Input escondido para câmera/arquivo -->
   <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none;" />
@@ -142,6 +191,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app_v5.3.0.js"></script>
 </body>
 </html>
