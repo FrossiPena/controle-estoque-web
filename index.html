@@ -1,4 +1,4 @@
-<!-- index.html - v5.1 (4 fotos por linha: Abrir Foto 1..4 + substituir slot 1..4) -->
+<!-- index.html - v5.2 (Abrir Foto 1..4 sempre visíveis / disabled quando vazio + modal para abrir câmera) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -93,23 +93,12 @@
 
       <input type="text" id="txt-lin" placeholder="Resultado da linha consultada" readonly />
 
-      <!-- LINKS DAS 4 FOTOS -->
+      <!-- Botões SEMPRE visíveis: ficam disabled quando não existe URL -->
       <div class="foto-links" style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-        <a id="foto-link1" href="#" target="_blank" rel="noopener noreferrer" style="display:none; flex:1; min-width:160px;">
-          <button type="button" style="width:100%;">Abrir Foto 1</button>
-        </a>
-
-        <a id="foto-link2" href="#" target="_blank" rel="noopener noreferrer" style="display:none; flex:1; min-width:160px;">
-          <button type="button" style="width:100%;">Abrir Foto 2</button>
-        </a>
-
-        <a id="foto-link3" href="#" target="_blank" rel="noopener noreferrer" style="display:none; flex:1; min-width:160px;">
-          <button type="button" style="width:100%;">Abrir Foto 3</button>
-        </a>
-
-        <a id="foto-link4" href="#" target="_blank" rel="noopener noreferrer" style="display:none; flex:1; min-width:160px;">
-          <button type="button" style="width:100%;">Abrir Foto 4</button>
-        </a>
+        <button type="button" id="btn-abrirfoto1" onclick="abrirFoto(1)" disabled style="flex:1; min-width:160px;">Abrir Foto 1</button>
+        <button type="button" id="btn-abrirfoto2" onclick="abrirFoto(2)" disabled style="flex:1; min-width:160px;">Abrir Foto 2</button>
+        <button type="button" id="btn-abrirfoto3" onclick="abrirFoto(3)" disabled style="flex:1; min-width:160px;">Abrir Foto 3</button>
+        <button type="button" id="btn-abrirfoto4" onclick="abrirFoto(4)" disabled style="flex:1; min-width:160px;">Abrir Foto 4</button>
       </div>
     </div>
 
@@ -129,6 +118,25 @@
       <div class="debug-actions">
         <button type="button" onclick="limparDebug()">Limpar log</button>
         <button type="button" onclick="copiarDebug()">Copiar log</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input escondido para câmera/arquivo (aberto somente por clique do usuário) -->
+  <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none;" />
+
+  <!-- Modal simples (inline) para garantir gesto do usuário no mobile -->
+  <div id="foto-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; padding:16px;">
+    <div style="max-width:520px; margin:12vh auto 0; background:#fff; border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);">
+      <div id="foto-modal-text" style="margin-bottom:12px; font-weight:600;">
+        Foto
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" id="foto-modal-open" style="flex:1; min-width:220px;">Abrir câmera / selecionar arquivo</button>
+        <button type="button" id="foto-modal-cancel" style="flex:1; min-width:160px;">Cancelar</button>
+      </div>
+      <div style="margin-top:10px; font-size:12px; opacity:.75;">
+        Dica: no celular, este botão abre a câmera traseira (quando suportado).
       </div>
     </div>
   </div>
