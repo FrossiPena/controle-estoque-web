@@ -1,9 +1,8 @@
-// v5.1 - 4 fotos por linha (I..L): abrir foto 1..4, substituir com escolha 1..4, upload grava row_slot.ext
-// Mantém: QR, consulta consolidado, registro inventário, limpar campos após registrar OK, get_lin/clear_lin
+// v5.2 - Botões Abrir Foto 1..4 sempre visíveis (disabled quando sem URL)
+//     + correção do “glitch” do mobile: abre câmera/arquivo somente via clique do usuário (modal)
 
-const APP_VERSION = "v5.1";
+const APP_VERSION = "v5.2";
 
-// ENDPOINTS (com domínio)
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
 
@@ -16,6 +15,12 @@ let leituraProcessada = false;
 let lastHandledAt = 0;
 
 let gpsString = "";
+
+// Guarda URLs das fotos do último get_lin
+let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
+
+// Controle do upload via modal (evita bloqueio de câmera no mobile)
+let pendingFoto = null; // {row, slot, origem}
 
 function logDebug(msg) {
   const el = document.getElementById("debug-log");
@@ -57,7 +62,58 @@ window.addEventListener("DOMContentLoaded", () => {
   const btnSub = document.getElementById("btn-substfoto");
   if (btnSub) btnSub.addEventListener("click", () => substituirFotoLinhaUI());
 
-  atualizarLinksFotos({ fotoUrl: "", fotoUrl2: "", fotoUrl3: "", fotoUrl4: "" });
+  // Modal handlers (crítico para mobile)
+  const btnOpen = document.getElementById("foto-modal-open");
+  const btnCancel = document.getElementById("foto-modal-cancel");
+  const fileInput = document.getElementById("foto-input");
+
+  if (btnOpen && fileInput) {
+    btnOpen.addEventListener("click", () => {
+      // reset para permitir escolher o mesmo arquivo novamente
+      fileInput.value = "";
+      fileInput.click(); // <-- agora é gesto do usuário, não bloqueia
+    });
+  }
+
+  if (btnCancel) {
+    btnCancel.addEventListener("click", () => {
+      fecharModalFoto();
+      pendingFoto = null;
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", async () => {
+      try {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) { fecharModalFoto(); pendingFoto = null; return; }
+
+        if (!pendingFoto || !pendingFoto.row || !pendingFoto.slot) {
+          logDebug("foto-input: pendingFoto vazio. Cancelando upload.");
+          fecharModalFoto();
+          pendingFoto = null;
+          return;
+        }
+
+        const { row, slot, origem } = pendingFoto;
+
+        logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
+        const j = await uploadFotoParaLinha(row, slot, file);
+        logDebug(`Foto OK: row=${j.row} slot=${j.slot} url=${j.fotoUrl}`);
+
+        await consultarLinhaInventario(row); // atualiza resumo + habilita botões
+
+      } catch (e) {
+        logDebug("Erro ao processar/enviar foto: " + e);
+      } finally {
+        fecharModalFoto();
+        pendingFoto = null;
+      }
+    });
+  }
+
+  // Inicializa botões sempre visíveis e desabilitados
+  atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
 });
 
 function setCampo1CorPorTamanho(valor) {
@@ -73,27 +129,51 @@ function limparDebug() { const el = document.getElementById("debug-log"); if (el
 function copiarDebug() { const el = document.getElementById("debug-log"); if (!el) return; el.select(); document.execCommand("copy"); }
 
 /* =========================
-   Helpers - Links de fotos
+   Fotos: botões sempre visíveis (disabled quando vazio)
 ========================= */
 
-function setLink(id, url) {
-  const a = document.getElementById(id);
-  if (!a) return;
-  const u = String(url || "").trim();
-  if (u) {
-    a.href = u;
-    a.style.display = "block";
-  } else {
-    a.href = "#";
-    a.style.display = "none";
+function atualizarBotoesFotos(d) {
+  FOTO_URLS[1] = String(d.fotoUrl  || "").trim();
+  FOTO_URLS[2] = String(d.fotoUrl2 || "").trim();
+  FOTO_URLS[3] = String(d.fotoUrl3 || "").trim();
+  FOTO_URLS[4] = String(d.fotoUrl4 || "").trim();
+
+  for (let i=1;i<=4;i++){
+    const btn = document.getElementById(`btn-abrirfoto${i}`);
+    if (!btn) continue;
+    const url = FOTO_URLS[i];
+    btn.disabled = !url;
+    btn.title = url ? url : "Sem foto nesta posição";
   }
 }
 
-function atualizarLinksFotos(data) {
-  setLink("foto-link1", data.fotoUrl || "");
-  setLink("foto-link2", data.fotoUrl2 || "");
-  setLink("foto-link3", data.fotoUrl3 || "");
-  setLink("foto-link4", data.fotoUrl4 || "");
+// onclick do HTML
+function abrirFoto(slot) {
+  const url = FOTO_URLS[Number(slot)] || "";
+  if (!url) {
+    logDebug(`Abrir Foto ${slot}: sem URL (botão deveria estar disabled).`);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+/* =========================
+   Modal foto
+========================= */
+
+function abrirModalFoto(row, slot, origem) {
+  pendingFoto = { row:Number(row), slot:Number(slot), origem:String(origem||"") };
+
+  const modal = document.getElementById("foto-modal");
+  const txt = document.getElementById("foto-modal-text");
+
+  if (txt) txt.innerText = `Linha ${row} — Foto ${slot}: clique em "Abrir câmera / selecionar arquivo"`;
+  if (modal) modal.style.display = "block";
+}
+
+function fecharModalFoto() {
+  const modal = document.getElementById("foto-modal");
+  if (modal) modal.style.display = "none";
 }
 
 /* =========================
@@ -189,7 +269,7 @@ function processarQRCode(qrCodeMessage) {
 }
 
 /* =========================
-   CONSULTA (Consolidado)
+   CONSULTA (Consolidado) - mantida
 ========================= */
 
 function consultarDados() {
@@ -207,7 +287,6 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
-  // Campo1 vazio => h_por_l via Codigo C
   if (!parte0) {
     if (!codigoC) {
       if (elI) elI.value = "Não encontrado";
@@ -245,7 +324,6 @@ function consultarDados() {
     return;
   }
 
-  // Fluxo normal
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
   if (document.getElementById("campo2")) document.getElementById("campo2").value = parte1;
@@ -401,16 +479,17 @@ async function registrarMovimentacaoUI() {
       if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
 
-      // Mantém a linha no campo linha_consulta (ajuda para abrir foto/consultar depois)
+      // Preenche linha_consulta para facilitar abrir/substituir depois
       const inpLinha = document.getElementById("linha_consulta");
       if (inpLinha) inpLinha.value = String(j.row);
 
+      // Pergunta se quer foto
       const querFoto = confirm(`Deseja adicionar uma foto para a linha ${j.row}?`);
       if (querFoto) {
         const slot = perguntarSlotFoto();
         if (slot) {
-          await selecionarEEnviarFotoParaLinha(j.row, slot, "registrar");
-          await consultarLinhaInventario(j.row); // atualiza txt-lin + links
+          // Abre modal: usuário clica no botão e aí sim a câmera abre no celular
+          abrirModalFoto(j.row, slot, "registrar");
         }
       }
 
@@ -447,7 +526,7 @@ async function consultarLinhaInventario(row) {
   if (!row || row < 2) {
     logDebug("Consultar linha: informe um número de linha válido (>=2).");
     if (txt) txt.value = "Linha inválida (>=2).";
-    atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+    atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
     return;
   }
 
@@ -461,7 +540,7 @@ async function consultarLinhaInventario(row) {
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (!(j && j.ok && j.data)) {
       if (txt) txt.value = "Não encontrado";
-      atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+      atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
       return;
     }
 
@@ -473,7 +552,7 @@ async function consultarLinhaInventario(row) {
 
     if (txt) txt.value = resumo;
 
-    atualizarLinksFotos({
+    atualizarBotoesFotos({
       fotoUrl: d.fotoUrl || "",
       fotoUrl2: d.fotoUrl2 || "",
       fotoUrl3: d.fotoUrl3 || "",
@@ -483,7 +562,7 @@ async function consultarLinhaInventario(row) {
   } catch (err) {
     logDebug("Erro get_lin: " + err);
     if (txt) txt.value = "Erro ao consultar (ver debug).";
-    atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+    atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
   }
 }
 
@@ -498,22 +577,7 @@ async function deletarLinhaInventarioUI() {
     return;
   }
 
-  // Consulta antes para exibir resumo
-  const urlGet = `${ENDPOINT_REGISTRO}?mode=get_lin&row=${row}&t=${Date.now()}`;
-  logDebug("GET (pré-delete) get_lin: " + urlGet);
-
-  let resumo = `linha ${row}`;
-  try {
-    const rawGet = await (await fetch(urlGet)).text();
-    logDebug("Resposta (pré-delete) raw: " + rawGet);
-    const j = JSON.parse(rawGet);
-    if (j && j.ok && j.data) {
-      const d = j.data;
-      resumo = `linha ${row} | campo1=${d.campo1 || ""} | campo2=${d.campo2 || ""} | numInv=${d.numInv || ""}`;
-    }
-  } catch {}
-
-  const ok = confirm(`Deseja deletar (limpar) a ${resumo}?`);
+  const ok = confirm(`Deseja deletar (limpar) a linha ${row}?`);
   if (!ok) return;
 
   const urlClear = `${ENDPOINT_REGISTRO}?mode=clear_lin&row=${row}&t=${Date.now()}`;
@@ -526,7 +590,7 @@ async function deletarLinhaInventarioUI() {
 
     if (j && j.ok && j.cleared) {
       if (txt) txt.value = `Linha ${row} limpa com sucesso.`;
-      atualizarLinksFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+      atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
     } else {
       if (txt) txt.value = "Falha ao limpar linha (ver debug).";
     }
@@ -563,37 +627,12 @@ async function substituirFotoLinhaUI() {
   const slot = perguntarSlotFoto();
   if (!slot) return;
 
-  await selecionarEEnviarFotoParaLinha(row, slot, "substituir");
-  await consultarLinhaInventario(row);
+  abrirModalFoto(row, slot, "substituir");
 }
 
-async function selecionarEEnviarFotoParaLinha(row, slot, origem) {
-  const fileInput = document.createElement("input");
-  fileInput.type = "file";
-  fileInput.accept = "image/*";
-  fileInput.capture = "environment"; // ajuda no mobile
-
-  return new Promise((resolve) => {
-    fileInput.onchange = async () => {
-      try {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) { resolve(); return; }
-
-        logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
-
-        const j = await uploadFotoParaLinha(row, slot, file);
-
-        logDebug(`Foto OK: row=${j.row} slot=${j.slot} url=${j.fotoUrl}`);
-
-      } catch (e) {
-        logDebug("Erro ao processar/enviar foto: " + e);
-      }
-      resolve();
-    };
-
-    fileInput.click();
-  });
-}
+/* =========================
+   Upload Foto (POST text/plain)
+========================= */
 
 async function uploadFotoParaLinha(row, slot, file) {
   const base64 = await new Promise((resolve, reject) => {
