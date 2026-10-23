@@ -1,3 +1,4 @@
+// v5.8.0 - Sinal de comunicação no topo: vermelho (em andamento), verde (pronto), amarelo (terminou com erro)
 // v5.7.0 - Cadastro com leitura de QR, "Último inventário" (mode=ultimo_numinv) e GPS marcado
 //        - Consulta ítem seção 4: botão Localização (Google Maps a partir do GPS gravado)
 // v5.6.0 - Seção 5 "Dados completos": Busca completa por Código 9 (lista_inv + patrimonio_por_h)
@@ -10,7 +11,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.7.0";
+const APP_VERSION = "v5.8.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -182,9 +183,62 @@ function respostaNegada(raw) {
   return !!(j && j.auth === false);
 }
 
+/* =========================
+   SINAL DE COMUNICAÇÃO (topo da página)
+   Conta as chamadas em andamento: vermelho enquanto houver alguma,
+   verde quando todas terminaram, amarelo se alguma do lote falhou.
+========================= */
+
+const NET = { ativos: 0, erro: false };
+
+function renderSinal() {
+  const el = document.getElementById("net-status");
+  const txt = document.getElementById("net-text");
+  if (!el) return;
+  const estado = NET.ativos > 0 ? "ocupado" : (NET.erro ? "erro" : "pronto");
+  el.dataset.estado = estado;
+  const rotulo = { ocupado: "Consultando…", pronto: "Pronto", erro: "Com erro" }[estado];
+  const dica = { ocupado: "Consulta em andamento", pronto: "Consulta terminou", erro: "Consulta terminou com erro (ver Debug)" }[estado];
+  if (txt) txt.textContent = rotulo;
+  el.title = NET.ativos > 1 ? `${dica} (${NET.ativos} chamadas)` : dica;
+}
+
+function netInicio() {
+  if (NET.ativos === 0) NET.erro = false; // novo lote
+  NET.ativos++;
+  renderSinal();
+}
+
+function netFim(ok) {
+  if (!ok) NET.erro = true;
+  NET.ativos = Math.max(0, NET.ativos - 1);
+  renderSinal();
+}
+
+// Resposta "ok" = HTTP 2xx, JSON válido e sem ok:false
+function respostaOk(resp, raw) {
+  if (!resp.ok) return false;
+  let j = null; try { j = JSON.parse(raw); } catch {}
+  return !!(j && j.ok !== false);
+}
+
+// fetch com sinal; retorna { resp, raw } (o texto completo da resposta)
+async function netFetch(url, opts) {
+  netInicio();
+  let ok = false;
+  try {
+    const resp = await fetch(url, opts);
+    const raw = await resp.text();
+    ok = respostaOk(resp, raw);
+    return { resp, raw };
+  } finally {
+    netFim(ok);
+  }
+}
+
 // GET com credenciais; retorna o texto da resposta (o log mostra a URL sem a senha)
 async function apiGet(url) {
-  const raw = await (await fetch(url + authParams())).text();
+  const { raw } = await netFetch(url + authParams());
   if (respostaNegada(raw)) {
     logDebug("Acesso negado pelo servidor. Voltando para o login.");
     sair("Acesso negado. Entre novamente.");
@@ -205,7 +259,7 @@ async function fazerLogin(ev) {
   try {
     // Valida nos dois scripts (cada um tem sua própria lista de USUARIOS)
     const urls = [ENDPOINT_REGISTRO, ENDPOINT_CONSULTA].map(e => `${e}?mode=login&t=${Date.now()}`);
-    const raws = await Promise.all(urls.map(u => fetch(u + authParams()).then(r => r.text())));
+    const raws = await Promise.all(urls.map(u => netFetch(u + authParams()).then(x => x.raw)));
     const oks = raws.map(raw => { let j=null; try{ j=JSON.parse(raw); }catch{} return !!(j && j.ok); });
 
     if (oks[0] && oks[1]) {
@@ -1165,13 +1219,12 @@ async function uploadFotoParaLinha(row, slot, file) {
 
   logDebug(`POST upload_foto: row=${payload.row}, slot=${payload.slot}, mime=${payload.mime}, base64_len=${base64.length}`);
 
-  const resp = await fetch(ENDPOINT_REGISTRO, {
+  const { resp, raw } = await netFetch(ENDPOINT_REGISTRO, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
   });
 
-  const raw = await resp.text();
   logDebug("Resposta upload_foto raw: " + raw);
   logDebug(`upload_foto HTTP status: ${resp.status}`);
 

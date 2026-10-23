@@ -1,4 +1,4 @@
-<!-- index.html - v5.7.0 (Login + Consulta ítem em 5 seções + QR no Cadastro) -->
+<!-- index.html - v5.8.0 (Login + Consulta ítem em 5 seções + QR no Cadastro + sinal de comunicação) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -21,6 +21,12 @@
     <div class="brand">
       <div class="title">Controle de Estoque</div>
       <div class="subtitle" id="screenName">Consulta ítem</div>
+    </div>
+
+    <!-- Sinal de comunicação com as planilhas -->
+    <div class="net-status" id="net-status" data-estado="pronto" role="status" aria-live="polite" title="Pronto">
+      <span class="net-dot" aria-hidden="true"></span>
+      <span class="net-text" id="net-text">Pronto</span>
     </div>
   </header>
 
