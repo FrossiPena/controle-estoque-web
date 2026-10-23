@@ -1,4 +1,4 @@
-/* style_v5.6.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.7.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -283,6 +283,15 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 
 #btn-consultar-consulta{ width: 100%; margin-top: 4px; }
 #btn-busca-completa{ width: 100%; margin-top: 4px; }
+#btn-ult-local{ width: 100%; margin-top: 4px; }
+
+/* Cadastro: Inventário + "Último inventário" lado a lado */
+.loc-row-inv{ grid-template-columns: 90px 1fr auto; }
+.ult-numinv{ font-size: 12px; font-weight: 700; white-space: nowrap; opacity: .8; }
+@media (max-width: 480px){
+  .loc-row-inv{ grid-template-columns: 90px 1fr; }
+  .ult-numinv{ grid-column: 2; }
+}
 
 /* Dados completos: lista de ocorrências */
 .lista-inv-titulo{ margin: 10px 0 6px; font-weight: 700; font-size: 14px; }
