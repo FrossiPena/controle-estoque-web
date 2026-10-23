@@ -1,8 +1,12 @@
+// v5.5.0 - Login com usuário + senha por pessoa (validado nos Apps Scripts)
+//        - Todas as chamadas enviam user/pass; "acesso negado" volta para o login
+// v5.4.0 - Consulta ítem dividida em 4 seções + botão Consultar na própria tela
+//        - Seção "Último inventário" (mode=ultimo_inv): Data, Pátio, Rua, Andar e fotos
 // v5.2.1 - Modal foto fecha automático após selecionar
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.3.0";
+const APP_VERSION = "v5.5.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -19,6 +23,9 @@ let gpsString = "";
 
 // URLs das fotos do último get_lin
 let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
+
+// URLs das fotos do último inventário (tela Consulta ítem)
+let FOTO_URLS_ULT = { 1:"", 2:"", 3:"", 4:"" };
 
 // Modal/upload control
 let pendingFoto = null; // {row, slot, origem}
@@ -113,6 +120,103 @@ function logDebug(msg) {
   if (el) { el.value += `[${ts}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
 }
 
+/* =========================
+   LOGIN (usuário + senha por pessoa, validados nos Apps Scripts)
+========================= */
+
+const AUTH_KEY = "ce_auth";
+let AUTH = { user:"", pass:"" };
+
+function carregarAuth() {
+  try {
+    const j = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+    if (j && j.user && j.pass) AUTH = { user:String(j.user), pass:String(j.pass) };
+  } catch {}
+}
+
+function salvarAuth() {
+  try { localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH)); } catch {}
+}
+
+function authParams() {
+  return `&user=${encodeURIComponent(AUTH.user)}&pass=${encodeURIComponent(AUTH.pass)}`;
+}
+
+function atualizarUsuarioUI() {
+  const el = document.getElementById("user-info");
+  if (el) el.textContent = AUTH.user ? `Usuário: ${AUTH.user}` : "";
+}
+
+function mostrarLogin(msg) {
+  const tela = document.getElementById("login-screen");
+  const st = document.getElementById("login-msg");
+  if (st) st.innerText = msg || "";
+  if (tela) tela.hidden = false;
+  document.getElementById("login-user")?.focus();
+}
+
+function sair(msg) {
+  AUTH = { user:"", pass:"" };
+  try { localStorage.removeItem(AUTH_KEY); } catch {}
+  atualizarUsuarioUI();
+  closeMenu();
+  mostrarLogin(msg || "");
+}
+
+function respostaNegada(raw) {
+  let j = null; try { j = JSON.parse(raw); } catch {}
+  return !!(j && j.auth === false);
+}
+
+// GET com credenciais; retorna o texto da resposta (o log mostra a URL sem a senha)
+async function apiGet(url) {
+  const raw = await (await fetch(url + authParams())).text();
+  if (respostaNegada(raw)) {
+    logDebug("Acesso negado pelo servidor. Voltando para o login.");
+    sair("Acesso negado. Entre novamente.");
+  }
+  return raw;
+}
+
+async function fazerLogin(ev) {
+  if (ev) ev.preventDefault();
+  const user = (document.getElementById("login-user")?.value || "").trim();
+  const pass = document.getElementById("login-pass")?.value || "";
+  const st = document.getElementById("login-msg");
+
+  if (!user || !pass) { if (st) st.innerText = "Informe usuário e senha."; return; }
+  if (st) st.innerText = "Verificando...";
+
+  AUTH = { user, pass };
+  try {
+    // Valida nos dois scripts (cada um tem sua própria lista de USUARIOS)
+    const urls = [ENDPOINT_REGISTRO, ENDPOINT_CONSULTA].map(e => `${e}?mode=login&t=${Date.now()}`);
+    const raws = await Promise.all(urls.map(u => fetch(u + authParams()).then(r => r.text())));
+    const oks = raws.map(raw => { let j=null; try{ j=JSON.parse(raw); }catch{} return !!(j && j.ok); });
+
+    if (oks[0] && oks[1]) {
+      salvarAuth();
+      atualizarUsuarioUI();
+      document.getElementById("login-pass").value = "";
+      document.getElementById("login-screen").hidden = true;
+      if (st) st.innerText = "";
+      logDebug(`Login OK: ${user}`);
+    } else {
+      AUTH = { user:"", pass:"" };
+      if (st) st.innerText = (oks[0] || oks[1])
+        ? "Usuário aceito em apenas uma das planilhas. Verifique USUARIOS nos dois Apps Scripts."
+        : "Usuário ou senha inválidos.";
+      logDebug(`Login recusado: ${user} (registro=${oks[0]}, consulta=${oks[1]})`);
+    }
+  } catch (err) {
+    AUTH = { user:"", pass:"" };
+    if (st) st.innerText = "Erro de rede ao entrar (ver debug).";
+    logDebug("Erro login: " + err);
+  }
+}
+
+carregarAuth();
+
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
@@ -142,6 +246,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // Tela padrão
   showScreen("consulta");
+
+  // Login
+  document.getElementById("login-form")?.addEventListener("submit", fazerLogin);
+  document.getElementById("btn-sair")?.addEventListener("click", () => sair());
+  atualizarUsuarioUI();
+  if (!AUTH.user || !AUTH.pass) mostrarLogin("");
 
   const rua = document.getElementById("rua-input");
   const andar = document.getElementById("andar-input");
@@ -271,6 +381,27 @@ function atualizarBotoesFotos(d) {
 
 function abrirFoto(slot) {
   const url = FOTO_URLS[Number(slot)] || "";
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function atualizarBotoesFotosUlt(d) {
+  FOTO_URLS_ULT[1] = String(d.fotoUrl  || "").trim();
+  FOTO_URLS_ULT[2] = String(d.fotoUrl2 || "").trim();
+  FOTO_URLS_ULT[3] = String(d.fotoUrl3 || "").trim();
+  FOTO_URLS_ULT[4] = String(d.fotoUrl4 || "").trim();
+
+  for (let i=1;i<=4;i++){
+    const btn = document.getElementById(`btn-ult-foto${i}`);
+    if (!btn) continue;
+    const url = FOTO_URLS_ULT[i];
+    btn.disabled = !url;
+    btn.title = url ? url : "Sem foto nesta posição";
+  }
+}
+
+function abrirFotoUlt(slot) {
+  const url = FOTO_URLS_ULT[Number(slot)] || "";
   if (!url) return;
   window.open(url, "_blank", "noopener,noreferrer");
 }
@@ -409,12 +540,15 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
+  limparUltimoInventario("");
+
   if (!parte0) {
     if (!codigoC) {
       if (elI) elI.value = "Não encontrado";
       if (elGruas) elGruas.value = "Não encontrado";
       if (elExata) elExata.value = "Não encontrado";
       if (elDescPT) elDescPT.value = "Não encontrado";
+      limparUltimoInventario("Informe Código 9 + Código individual ou o Código C.");
       logDebug("ConsultarUI: campo1 e Codigo C vazios. Nada a fazer.");
       return;
     }
@@ -425,7 +559,7 @@ function consultarDados() {
     const urlHporL = `${ENDPOINT_CONSULTA}?mode=h_por_l&l=${encodeURIComponent(chaveL)}&t=${Date.now()}`;
     logDebug("GET Buscar H por L (L->H): " + urlHporL);
 
-    fetch(urlHporL).then(r=>r.text()).then(raw=>{
+    apiGet(urlHporL).then(raw=>{
       logDebug("Resposta (L->H) raw: " + raw);
       let j=null; try{ j=JSON.parse(raw); }catch{}
 
@@ -440,11 +574,15 @@ function consultarDados() {
         if (elGruas) elGruas.value = "Não encontrado";
         if (elExata) elExata.value = "Não encontrado";
         if (elDescPT) elDescPT.value = "Não encontrado";
+        limparUltimoInventario("Código C não encontrado.");
       }
     });
 
     return;
   }
+
+  // Último inventário exige Código 9 AND Código individual (antes de normalizar vazio -> "0")
+  const individualInformado = parte1 !== "";
 
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
@@ -454,7 +592,7 @@ function consultarDados() {
 
   const urlI = `${ENDPOINT_CONSULTA}?mode=i_por_h&codigo=${encodeURIComponent(parte0)}`;
   logDebug("GET Resultado da consulta (H->I): " + urlI);
-  fetch(urlI).then(r=>r.text()).then(raw=>{
+  apiGet(urlI).then(raw=>{
     logDebug("Resposta (H->I) raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) { const v=(j.resultado||"").trim(); if (elI) elI.value = v || "Não encontrado"; }
@@ -463,7 +601,7 @@ function consultarDados() {
 
   const urlGruas = `${ENDPOINT_CONSULTA}?mode=gruas&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Gruas aplicáveis (H->C[] & M[]): " + urlGruas);
-  fetch(urlGruas).then(r=>r.text()).then(raw=>{
+  apiGet(urlGruas).then(raw=>{
     logDebug("Resposta Gruas raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     if (j && j.ok) {
@@ -481,7 +619,7 @@ function consultarDados() {
 
   const urlExata = `${ENDPOINT_CONSULTA}?mode=exata&h=${encodeURIComponent(parte0)}&k=${encodeURIComponent(parte1)}`;
   logDebug("GET Correspondência exata (H&K->M): " + urlExata);
-  fetch(urlExata).then(r=>r.text()).then(raw=>{
+  apiGet(urlExata).then(raw=>{
     logDebug("Resposta Exata raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     document.getElementById("correspondencia-exata").value =
@@ -490,12 +628,72 @@ function consultarDados() {
 
   const urlDescPT = `${ENDPOINT_CONSULTA}?mode=desc_pt&h=${encodeURIComponent(parte0)}`;
   logDebug("GET Descrição Português: " + urlDescPT);
-  fetch(urlDescPT).then(r=>r.text()).then(raw=>{
+  apiGet(urlDescPT).then(raw=>{
     logDebug("Resposta Descrição PT raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
     document.getElementById("descricao-pt").value =
       (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
   });
+
+  if (individualInformado) {
+    consultarUltimoInventario(parte0, parte1);
+  } else {
+    limparUltimoInventario("Informe o Código individual para ver o último inventário.");
+  }
+}
+
+/* =========================
+   ÚLTIMO INVENTÁRIO (Código 9 + Código individual)
+========================= */
+
+function limparUltimoInventario(msg) {
+  ["ult-data","ult-patio","ult-rua","ult-andar"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  atualizarBotoesFotosUlt({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+  const st = document.getElementById("ult-status");
+  if (st) st.innerText = msg || "";
+}
+
+async function consultarUltimoInventario(campo1, campo2) {
+  const st = document.getElementById("ult-status");
+  if (st) st.innerText = "Buscando último inventário...";
+
+  const url =
+    `${ENDPOINT_REGISTRO}?mode=ultimo_inv` +
+    `&campo1=${encodeURIComponent(campo1)}` +
+    `&campo2=${encodeURIComponent(campo2)}` +
+    `&t=${Date.now()}`;
+  logDebug("GET Último inventário (ultimo_inv): " + url);
+
+  try {
+    const raw = await apiGet(url);
+    logDebug("Resposta ultimo_inv raw: " + raw);
+
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (!(j && j.ok)) {
+      limparUltimoInventario("Falha ao buscar último inventário (ver debug).");
+      return;
+    }
+    if (!j.data) {
+      limparUltimoInventario("Nenhum registro de inventário para este ítem.");
+      return;
+    }
+
+    const d = j.data;
+    document.getElementById("ult-data").value  = d.dataHora || "";
+    document.getElementById("ult-patio").value = d.loc || "";
+    document.getElementById("ult-rua").value   = d.rua || "";
+    document.getElementById("ult-andar").value = d.andar || "";
+    atualizarBotoesFotosUlt(d);
+
+    const quem = d.usuario ? ` Registrado por ${d.usuario}.` : "";
+    if (st) st.innerText = j.row ? `Linha ${j.row} da tabela de inventário.${quem}` : quem.trim();
+  } catch (err) {
+    logDebug("Erro ultimo_inv: " + err);
+    limparUltimoInventario("Erro ao buscar último inventário (ver debug).");
+  }
 }
 
 function formatarCodigoC(apenasNumeros) {
@@ -594,7 +792,7 @@ async function registrarMovimentacaoUI() {
   logDebug("GET Registrar (log_mov): " + urlLog);
 
   try {
-    const raw = await (await fetch(urlLog)).text();
+    const raw = await apiGet(urlLog);
     logDebug("Resposta Registrar raw: " + raw);
 
     let j = null;
@@ -658,7 +856,7 @@ async function consultarLinhaInventario(row) {
   logDebug("GET Consultar linha (get_lin): " + url);
 
   try {
-    const raw = await (await fetch(url)).text();
+    const raw = await apiGet(url);
     logDebug("Resposta get_lin raw: " + raw);
 
     let j=null; try{ j=JSON.parse(raw); }catch{}
@@ -672,7 +870,7 @@ async function consultarLinhaInventario(row) {
 
     const resumo =
       `Linha ${row} | NumInv=${d.numInv || ""} | Campo1=${d.campo1 || ""} | Campo2=${d.campo2 || ""} | ` +
-      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | OBS=${d.obs || ""} | DataHora=${d.dataHora || ""}`;
+      `Pátio=${d.loc || ""} | Rua=${d.rua || ""} | Andar=${d.andar || ""} | OBS=${d.obs || ""} | DataHora=${d.dataHora || ""} | Usuário=${d.usuario || ""}`;
 
     if (txt) txt.value = resumo;
 
@@ -708,7 +906,7 @@ async function deletarLinhaInventarioUI() {
   logDebug("GET clear_lin: " + urlClear);
 
   try {
-    const raw = await (await fetch(urlClear)).text();
+    const raw = await apiGet(urlClear);
     logDebug("Resposta clear_lin raw: " + raw);
     let j=null; try{ j=JSON.parse(raw); }catch{}
 
@@ -775,7 +973,9 @@ async function uploadFotoParaLinha(row, slot, file) {
     row: Number(row),
     slot: Number(slot),
     mime: file.type || "image/jpeg",
-    base64
+    base64,
+    user: AUTH.user,
+    pass: AUTH.pass
   };
 
   logDebug(`POST upload_foto: row=${payload.row}, slot=${payload.slot}, mime=${payload.mime}, base64_len=${base64.length}`);
@@ -789,6 +989,11 @@ async function uploadFotoParaLinha(row, slot, file) {
   const raw = await resp.text();
   logDebug("Resposta upload_foto raw: " + raw);
   logDebug(`upload_foto HTTP status: ${resp.status}`);
+
+  if (respostaNegada(raw)) {
+    sair("Acesso negado. Entre novamente.");
+    throw new Error("upload_foto: acesso negado");
+  }
 
   let j = null;
   try { j = JSON.parse(raw); } catch {}

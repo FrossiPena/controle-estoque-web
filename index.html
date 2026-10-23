@@ -1,4 +1,4 @@
-<!-- index.html - v5.3.0 (Menu lateral + 4 telas) -->
+<!-- index.html - v5.5.0 (Login por usuário + Consulta ítem em 4 seções) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -37,8 +37,30 @@
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
       <button type="button" data-screen="debug">4) Debug</button>
     </nav>
+
+    <div class="sidebar-footer">
+      <div id="user-info" class="user-info"></div>
+      <button type="button" id="btn-sair">Sair</button>
+    </div>
   </aside>
   <div class="overlay" id="overlay"></div>
+
+  <!-- Login (cobre o app até entrar) -->
+  <div class="login-screen" id="login-screen" hidden>
+    <form class="frame login-card" id="login-form" autocomplete="on">
+      <h2>Controle de Estoque</h2>
+      <p class="secao-info">Entre com seu usuário e senha.</p>
+
+      <label class="campo-label" for="login-user">Usuário</label>
+      <input type="text" id="login-user" autocomplete="username" autocapitalize="none" spellcheck="false" />
+
+      <label class="campo-label" for="login-pass">Senha</label>
+      <input type="password" id="login-pass" autocomplete="current-password" />
+
+      <button type="submit" id="btn-entrar">Entrar</button>
+      <p id="login-msg" class="login-msg"></p>
+    </form>
+  </div>
 
   <!-- Conteúdo / Frames -->
   <main class="main">
@@ -46,30 +68,107 @@
     <section class="frame" id="screen-consulta">
       <h2>Consulta ítem</h2>
 
-      <div class="scanner-buttons">
-        <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
-        <button type="button" onclick="pararLeitor()">Parar leitura</button>
+      <!-- Seção 1: Leitura do QR Code -->
+      <div class="secao">
+        <h3>1. Leitura do QR Code</h3>
+        <p class="secao-info">
+          Aponte a câmera para o QR Code da etiqueta. Os campos abaixo são preenchidos
+          e a consulta é feita automaticamente.
+        </p>
+
+        <div class="scanner-buttons">
+          <button type="button" onclick="iniciarLeitor()">Iniciar Leitura</button>
+          <button type="button" onclick="pararLeitor()">Parar leitura</button>
+        </div>
+
+        <div id="qr-reader" class="qr-reader"></div>
+        <p id="qr-result" class="qr-status">Aguardando leitura...</p>
+
+        <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
       </div>
 
-      <div id="qr-reader" class="qr-reader"></div>
-      <p id="qr-result" class="qr-status">Aguardando leitura...</p>
+      <hr class="sep" />
 
-      <input type="text" id="codigo-lido" placeholder="Código lido automaticamente" readonly />
+      <!-- Seção 2: Consulta manual -->
+      <div class="secao">
+        <h3>2. Consulta manual</h3>
+        <p class="secao-info">
+          Sem QR Code? Digite Código 9 + Código individual, ou apenas o Código C
+          (somente números), e toque em Consultar.
+        </p>
 
-      <div class="parsed-fields">
-        <input type="text" id="campo1" placeholder="Codigo 9" />
-        <input type="text" id="campo2" placeholder="Codigo individual" />
+        <div class="parsed-fields">
+          <input type="text" id="campo1" placeholder="Codigo 9" />
+          <input type="text" id="campo2" placeholder="Codigo individual" />
+        </div>
+
+        <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
+
+        <button type="button" id="btn-consultar-consulta" onclick="consultarDados()">Consultar</button>
       </div>
 
-      <input type="text" id="codigo-c-input" placeholder="Codigo C - apenas numeros" />
+      <hr class="sep" />
 
-      <input type="text" id="descricao-pt" placeholder="Descrição portugues" readonly />
-      <textarea id="gruas-aplicaveis" placeholder="Gruas Aplicáveis" readonly></textarea>
-      <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
-      <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
+      <!-- Seção 3: Resultado da consulta (somente leitura) -->
+      <div class="secao">
+        <h3>3. Resultado da consulta</h3>
+        <p class="secao-info">
+          Informações do cadastro do ítem. Estes campos não são editáveis.
+        </p>
 
-      <div class="hint">
-        Dica: ao ler o QR Code, a consulta é feita automaticamente.
+        <label class="campo-label" for="descricao-pt">Descrição em português</label>
+        <input type="text" id="descricao-pt" placeholder="Descrição portugues" readonly />
+
+        <label class="campo-label" for="gruas-aplicaveis">Gruas aplicáveis</label>
+        <textarea id="gruas-aplicaveis" placeholder="Gruas Aplicáveis" readonly></textarea>
+
+        <label class="campo-label" for="correspondencia-exata">Correspondência exata</label>
+        <input type="text" id="correspondencia-exata" placeholder="Correspondência exata" readonly />
+
+        <label class="campo-label" for="resultado-google">Resultado da consulta</label>
+        <input type="text" id="resultado-google" placeholder="Resultado da consulta" readonly />
+      </div>
+
+      <hr class="sep" />
+
+      <!-- Seção 4: Último inventário (somente leitura) -->
+      <div class="secao">
+        <h3>4. Último inventário</h3>
+        <p class="secao-info">
+          Registro mais recente deste ítem na tabela de inventário
+          (busca por Código 9 + Código individual).
+        </p>
+
+        <div class="loc-fields">
+          <div class="loc-row">
+            <label for="ult-data">Data</label>
+            <input type="text" id="ult-data" readonly />
+          </div>
+
+          <div class="loc-row">
+            <label for="ult-patio">Pátio</label>
+            <input type="text" id="ult-patio" readonly />
+          </div>
+
+          <div class="loc-row">
+            <label for="ult-rua">Rua</label>
+            <input type="text" id="ult-rua" readonly />
+          </div>
+
+          <div class="loc-row">
+            <label for="ult-andar">Andar</label>
+            <input type="text" id="ult-andar" readonly />
+          </div>
+        </div>
+
+        <div class="foto-links">
+          <button type="button" id="btn-ult-foto1" onclick="abrirFotoUlt(1)" disabled>Abrir Foto 1</button>
+          <button type="button" id="btn-ult-foto2" onclick="abrirFotoUlt(2)" disabled>Abrir Foto 2</button>
+          <button type="button" id="btn-ult-foto3" onclick="abrirFotoUlt(3)" disabled>Abrir Foto 3</button>
+          <button type="button" id="btn-ult-foto4" onclick="abrirFotoUlt(4)" disabled>Abrir Foto 4</button>
+        </div>
+
+        <p id="ult-status" class="secao-info"></p>
       </div>
     </section>
 

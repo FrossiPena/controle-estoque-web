@@ -1,4 +1,4 @@
-/* style_v5.3.0.css - Menu lateral + 4 telas */
+/* style_v5.5.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -255,8 +255,62 @@ input, textarea, select {
 .status-wrap label{ display:block; font-weight: 700; margin-bottom: 4px; }
 #status-msg{ margin: 0; min-height: 20px; }
 
+/* Consulta ítem: seções */
+.sep{
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 16px 0;
+}
+.secao h3{
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.secao-info{
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: .75;
+}
+.campo-label{
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.campo-label + input,
+.campo-label + textarea{ margin-top: 4px; }
+
+input[readonly], textarea[readonly]{ background: #f6f7f9; }
+
+#btn-consultar-consulta{ width: 100%; margin-top: 4px; }
+
 .hint{
   margin-top: 8px;
   font-size: 12px;
   opacity: .75;
 }
+
+/* Login */
+.login-screen{
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  overflow-y: auto;
+  padding: 12vh 16px 24px;
+}
+.login-screen[hidden]{ display: none; }
+.login-card{ max-width: 380px; margin: 0 auto; }
+#btn-entrar{ width: 100%; margin-top: 8px; }
+.login-msg{ margin: 10px 0 0; min-height: 18px; color: #c00000; font-size: 13px; }
+
+.sidebar-footer{
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.10);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.user-info{ font-size: 13px; opacity: .85; }
+#btn-sair{ background: rgba(255,255,255,.14); color: #fff; }
