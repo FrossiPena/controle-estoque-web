@@ -1,4 +1,4 @@
-/* style_v5.3.0.css - Menu lateral + 4 telas */
+/* style_v5.4.0.css - Menu lateral + 4 telas + seções da Consulta ítem */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -254,6 +254,34 @@ input, textarea, select {
 .status-wrap{ margin-top: 10px; }
 .status-wrap label{ display:block; font-weight: 700; margin-bottom: 4px; }
 #status-msg{ margin: 0; min-height: 20px; }
+
+/* Consulta ítem: seções */
+.sep{
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 16px 0;
+}
+.secao h3{
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.secao-info{
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: .75;
+}
+.campo-label{
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.campo-label + input,
+.campo-label + textarea{ margin-top: 4px; }
+
+input[readonly], textarea[readonly]{ background: #f6f7f9; }
+
+#btn-consultar-consulta{ width: 100%; margin-top: 4px; }
 
 .hint{
   margin-top: 8px;

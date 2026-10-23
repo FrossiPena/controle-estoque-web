@@ -1,8 +1,10 @@
+// v5.4.0 - Consulta ítem dividida em 4 seções + botão Consultar na própria tela
+//        - Seção "Último inventário" (mode=ultimo_inv): Data, Pátio, Rua, Andar e fotos
 // v5.2.1 - Modal foto fecha automático após selecionar
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.3.0";
+const APP_VERSION = "v5.4.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -19,6 +21,9 @@ let gpsString = "";
 
 // URLs das fotos do último get_lin
 let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
+
+// URLs das fotos do último inventário (tela Consulta ítem)
+let FOTO_URLS_ULT = { 1:"", 2:"", 3:"", 4:"" };
 
 // Modal/upload control
 let pendingFoto = null; // {row, slot, origem}
@@ -275,6 +280,27 @@ function abrirFoto(slot) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function atualizarBotoesFotosUlt(d) {
+  FOTO_URLS_ULT[1] = String(d.fotoUrl  || "").trim();
+  FOTO_URLS_ULT[2] = String(d.fotoUrl2 || "").trim();
+  FOTO_URLS_ULT[3] = String(d.fotoUrl3 || "").trim();
+  FOTO_URLS_ULT[4] = String(d.fotoUrl4 || "").trim();
+
+  for (let i=1;i<=4;i++){
+    const btn = document.getElementById(`btn-ult-foto${i}`);
+    if (!btn) continue;
+    const url = FOTO_URLS_ULT[i];
+    btn.disabled = !url;
+    btn.title = url ? url : "Sem foto nesta posição";
+  }
+}
+
+function abrirFotoUlt(slot) {
+  const url = FOTO_URLS_ULT[Number(slot)] || "";
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 /* =========================
    Modal foto
 ========================= */
@@ -409,12 +435,15 @@ function consultarDados() {
   if (elExata) elExata.value = "";
   if (elDescPT) elDescPT.value = "";
 
+  limparUltimoInventario("");
+
   if (!parte0) {
     if (!codigoC) {
       if (elI) elI.value = "Não encontrado";
       if (elGruas) elGruas.value = "Não encontrado";
       if (elExata) elExata.value = "Não encontrado";
       if (elDescPT) elDescPT.value = "Não encontrado";
+      limparUltimoInventario("Informe Código 9 + Código individual ou o Código C.");
       logDebug("ConsultarUI: campo1 e Codigo C vazios. Nada a fazer.");
       return;
     }
@@ -440,11 +469,15 @@ function consultarDados() {
         if (elGruas) elGruas.value = "Não encontrado";
         if (elExata) elExata.value = "Não encontrado";
         if (elDescPT) elDescPT.value = "Não encontrado";
+        limparUltimoInventario("Código C não encontrado.");
       }
     });
 
     return;
   }
+
+  // Último inventário exige Código 9 AND Código individual (antes de normalizar vazio -> "0")
+  const individualInformado = parte1 !== "";
 
   parte1 = parte1.replace(/^0+/, "");
   if (parte1 === "") parte1 = "0";
@@ -496,6 +529,65 @@ function consultarDados() {
     document.getElementById("descricao-pt").value =
       (j && j.ok && (j.descricao||"").trim()) ? (j.descricao||"").trim() : "Não encontrado";
   });
+
+  if (individualInformado) {
+    consultarUltimoInventario(parte0, parte1);
+  } else {
+    limparUltimoInventario("Informe o Código individual para ver o último inventário.");
+  }
+}
+
+/* =========================
+   ÚLTIMO INVENTÁRIO (Código 9 + Código individual)
+========================= */
+
+function limparUltimoInventario(msg) {
+  ["ult-data","ult-patio","ult-rua","ult-andar"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  atualizarBotoesFotosUlt({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+  const st = document.getElementById("ult-status");
+  if (st) st.innerText = msg || "";
+}
+
+async function consultarUltimoInventario(campo1, campo2) {
+  const st = document.getElementById("ult-status");
+  if (st) st.innerText = "Buscando último inventário...";
+
+  const url =
+    `${ENDPOINT_REGISTRO}?mode=ultimo_inv` +
+    `&campo1=${encodeURIComponent(campo1)}` +
+    `&campo2=${encodeURIComponent(campo2)}` +
+    `&t=${Date.now()}`;
+  logDebug("GET Último inventário (ultimo_inv): " + url);
+
+  try {
+    const raw = await (await fetch(url)).text();
+    logDebug("Resposta ultimo_inv raw: " + raw);
+
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (!(j && j.ok)) {
+      limparUltimoInventario("Falha ao buscar último inventário (ver debug).");
+      return;
+    }
+    if (!j.data) {
+      limparUltimoInventario("Nenhum registro de inventário para este ítem.");
+      return;
+    }
+
+    const d = j.data;
+    document.getElementById("ult-data").value  = d.dataHora || "";
+    document.getElementById("ult-patio").value = d.loc || "";
+    document.getElementById("ult-rua").value   = d.rua || "";
+    document.getElementById("ult-andar").value = d.andar || "";
+    atualizarBotoesFotosUlt(d);
+
+    if (st) st.innerText = j.row ? `Linha ${j.row} da tabela de inventário.` : "";
+  } catch (err) {
+    logDebug("Erro ultimo_inv: " + err);
+    limparUltimoInventario("Erro ao buscar último inventário (ver debug).");
+  }
 }
 
 function formatarCodigoC(apenasNumeros) {
