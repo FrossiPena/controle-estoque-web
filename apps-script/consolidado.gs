@@ -1,8 +1,10 @@
-// v4.0 - Consolidado WebApp
+// v4.1 - Consolidado WebApp
+// Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
+//        (Configurações do projeto > Propriedades do script), formato: nome:senha, um por linha
 // FIX: adiciona mode=h_por_l (L->H) com formatação Código C e respostas com version
-// Modos: diag, gruas, exata, i_por_h, desc_pt, h_por_l
+// Modos: diag, login, gruas, exata, i_por_h, desc_pt, h_por_l
 
-const SCRIPT_VERSION = "v4.0";
+const SCRIPT_VERSION = "v4.1";
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
 
 function doGet(e) {
@@ -11,7 +13,14 @@ function doGet(e) {
 
   // diag sempre responde, mesmo se a planilha estiver errada
   if (mode === "diag") {
-    return json({ ok: true, version: SCRIPT_VERSION, mode, params });
+    return json({ ok: true, version: SCRIPT_VERSION, mode });
+  }
+
+  const usuario = auth_(params.user, params.pass);
+  if (!usuario) return json({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
+
+  if (mode === "login") {
+    return json({ ok:true, version: SCRIPT_VERSION, user: usuario });
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -176,4 +185,23 @@ function doGet(e) {
 function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Valida user/pass contra a propriedade USUARIOS ("nome:senha" por linha).
+// Retorna o nome do usuário (minúsculo) ou "" se inválido. Sem USUARIOS => ninguém entra.
+function auth_(user, pass) {
+  const u = String(user || "").trim().toLowerCase();
+  const s = String(pass || "");
+  if (!u || !s) return "";
+
+  const lista = PropertiesService.getScriptProperties().getProperty("USUARIOS") || "";
+  const linhas = lista.split(/[\n,;]+/);
+  for (let i = 0; i < linhas.length; i++) {
+    const idx = linhas[i].indexOf(":");
+    if (idx < 1) continue;
+    const nome  = linhas[i].substring(0, idx).trim().toLowerCase();
+    const senha = linhas[i].substring(idx + 1).trim();
+    if (nome === u && senha === s) return nome;
+  }
+  return "";
 }

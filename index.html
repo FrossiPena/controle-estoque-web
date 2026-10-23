@@ -1,4 +1,4 @@
-<!-- index.html - v5.4.0 (Consulta ítem em 4 seções + último inventário) -->
+<!-- index.html - v5.5.0 (Login por usuário + Consulta ítem em 4 seções) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -37,8 +37,30 @@
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
       <button type="button" data-screen="debug">4) Debug</button>
     </nav>
+
+    <div class="sidebar-footer">
+      <div id="user-info" class="user-info"></div>
+      <button type="button" id="btn-sair">Sair</button>
+    </div>
   </aside>
   <div class="overlay" id="overlay"></div>
+
+  <!-- Login (cobre o app até entrar) -->
+  <div class="login-screen" id="login-screen" hidden>
+    <form class="frame login-card" id="login-form" autocomplete="on">
+      <h2>Controle de Estoque</h2>
+      <p class="secao-info">Entre com seu usuário e senha.</p>
+
+      <label class="campo-label" for="login-user">Usuário</label>
+      <input type="text" id="login-user" autocomplete="username" autocapitalize="none" spellcheck="false" />
+
+      <label class="campo-label" for="login-pass">Senha</label>
+      <input type="password" id="login-pass" autocomplete="current-password" />
+
+      <button type="submit" id="btn-entrar">Entrar</button>
+      <p id="login-msg" class="login-msg"></p>
+    </form>
+  </div>
 
   <!-- Conteúdo / Frames -->
   <main class="main">

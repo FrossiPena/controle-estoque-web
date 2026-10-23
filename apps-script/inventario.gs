@@ -1,10 +1,13 @@
-// v5.3-inv - Inventário: A..M
+// v5.4-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
-// I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS
+// I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
+// Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
+//        (Configurações do projeto > Propriedades do script), formato: nome:senha, um por linha
 // upload_foto: slot 1..4 grava em I..L e salva arquivo como row_slot.ext (ex: 6_1.jpg)
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
 
-const SCRIPT_VERSION = "v5.3-inv";
+const SCRIPT_VERSION = "v5.4-inv";
+const NCOLS = 14; // A..N
 
 const INVENTARIO_ID  = "1CheE1Vpy-hldpiSbl6EC79VI_8DMxDmJ74XW8jevzN8";
 const INVENTARIO_ABA = "Movimentacoes";
@@ -20,7 +23,14 @@ function doGet(e) {
 
   try {
     if (mode === "diag") {
-      return json_({ ok:true, version: SCRIPT_VERSION, mode:"diag", params:p });
+      return json_({ ok:true, version: SCRIPT_VERSION, mode:"diag" });
+    }
+
+    const usuario = auth_(p.user, p.pass);
+    if (!usuario) return json_({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
+
+    if (mode === "login") {
+      return json_({ ok:true, version: SCRIPT_VERSION, user: usuario });
     }
 
     if (mode === "diag_drive") {
@@ -48,10 +58,10 @@ function doGet(e) {
 
       const dataHora = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm:ss");
 
-      // Garantir 13 colunas (A..M). Fotos (I..L) iniciam vazias.
+      // Garantir 14 colunas (A..N). Fotos (I..L) iniciam vazias.
       const rowData = [
         campo1, campo2, loc, rua, andar, gps, dataHora, numInv,
-        "", "", "", "", obs
+        "", "", "", "", obs, usuario
       ];
 
       sh.appendRow(rowData);
@@ -70,7 +80,7 @@ function doGet(e) {
       // Se pedirem uma linha maior que o max, retorna vazio
       if (row > sh.getMaxRows()) return json_({ ok:false, version: SCRIPT_VERSION, error:"row fora do range da planilha" });
 
-      const values = sh.getRange(row, 1, 1, 13).getValues()[0];
+      const values = sh.getRange(row, 1, 1, NCOLS).getValues()[0];
       return json_({ ok:true, version: SCRIPT_VERSION, row, data: rowToData_(values) });
     }
 
@@ -87,7 +97,7 @@ function doGet(e) {
 
       const campo1 = normCodigo_(p.campo1);
       const campo2 = normCodigo_(p.campo2);
-      const values = sh.getRange(2, 1, last - 1, 13).getValues();
+      const values = sh.getRange(2, 1, last - 1, NCOLS).getValues();
 
       // De baixo para cima: o último registro (linha mais recente) vence
       for (let i = values.length - 1; i >= 0; i--) {
@@ -109,7 +119,7 @@ function doGet(e) {
 
       if (row > sh.getMaxRows()) return json_({ ok:false, version: SCRIPT_VERSION, error:"row fora do range da planilha" });
 
-      sh.getRange(row, 1, 1, 13).setValues([ new Array(13).fill("") ]);
+      sh.getRange(row, 1, 1, NCOLS).setValues([ new Array(NCOLS).fill("") ]);
       return json_({ ok:true, version: SCRIPT_VERSION, cleared:true, row });
     }
 
@@ -125,6 +135,10 @@ function doPost(e) {
     const raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "";
     const payload = JSON.parse(raw || "{}");
     const mode = String(payload.mode || "").trim();
+
+    if (!auth_(payload.user, payload.pass)) {
+      return json_({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
+    }
 
     if (mode !== "upload_foto") {
       return json_({ ok:false, version: SCRIPT_VERSION, error:"mode inválido no POST" });
@@ -210,10 +224,10 @@ function getSheet_() {
 }
 
 function ensureHeader_(sh) {
-  // garante 13 colunas e headers na linha 1
+  // garante 14 colunas e headers na linha 1
   const headers = [
     "campo1","campo2","LOC","RUA","ANDAR","GPSSTRING","DATAHORA","NumInv",
-    "fotoUrl","fotoUrl2","fotoUrl3","fotoUrl4","OBS"
+    "fotoUrl","fotoUrl2","fotoUrl3","fotoUrl4","OBS","USUARIO"
   ];
 
   if (sh.getMaxColumns() < headers.length) {
@@ -224,13 +238,16 @@ function ensureHeader_(sh) {
   const needs = r1.every(v => String(v || "").trim() === "");
   if (needs) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  } else if (String(r1[13] || "").trim() === "") {
+    // planilha antiga (A..M): cria só o cabeçalho da coluna N
+    sh.getRange(1, 14).setValue("USUARIO");
   } else {
     // opcional: se quiser forçar nomes, descomente:
     // sh.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
 }
 
-// Converte os 13 valores de uma linha (A..M) no objeto usado pelo front
+// Converte os 14 valores de uma linha (A..N) no objeto usado pelo front
 function rowToData_(values) {
   // A planilha pode converter "yyyy-MM-dd HH:mm:ss" em Date; devolve sempre texto
   const dh = values[6];
@@ -251,8 +268,28 @@ function rowToData_(values) {
     fotoUrl2: values[9]  || "",
     fotoUrl3: values[10] || "",
     fotoUrl4: values[11] || "",
-    obs:      values[12] || ""
+    obs:      values[12] || "",
+    usuario:  values[13] || ""
   };
+}
+
+// Valida user/pass contra a propriedade USUARIOS ("nome:senha" por linha).
+// Retorna o nome do usuário (minúsculo) ou "" se inválido. Sem USUARIOS => ninguém entra.
+function auth_(user, pass) {
+  const u = String(user || "").trim().toLowerCase();
+  const s = String(pass || "");
+  if (!u || !s) return "";
+
+  const lista = PropertiesService.getScriptProperties().getProperty("USUARIOS") || "";
+  const linhas = lista.split(/[\n,;]+/);
+  for (let i = 0; i < linhas.length; i++) {
+    const idx = linhas[i].indexOf(":");
+    if (idx < 1) continue;
+    const nome  = linhas[i].substring(0, idx).trim().toLowerCase();
+    const senha = linhas[i].substring(idx + 1).trim();
+    if (nome === u && senha === s) return nome;
+  }
+  return "";
 }
 
 // Compara códigos sem zeros à esquerda (a planilha pode guardar como número)
