@@ -1,4 +1,4 @@
-<!-- index.html - v5.5.0 (Login por usuário + Consulta ítem em 4 seções) -->
+<!-- index.html - v5.6.0 (Login por usuário + Consulta ítem em 5 seções) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -169,6 +169,22 @@
         </div>
 
         <p id="ult-status" class="secao-info"></p>
+      </div>
+
+      <hr class="sep" />
+
+      <!-- Seção 5: Dados completos (todas as ocorrências do Código 9) -->
+      <div class="secao">
+        <h3>5. Dados completos</h3>
+        <p class="secao-info">
+          Todas as ocorrências de inventário do Código 9 (qualquer Código individual).
+          Toque em um ítem para abri-lo em Consultar Inventário.
+        </p>
+
+        <button type="button" id="btn-busca-completa" onclick="buscaCompletaUI()" disabled>Busca completa</button>
+
+        <p id="lista-inv-titulo" class="lista-inv-titulo"></p>
+        <ul id="lista-inv" class="lista-inv"></ul>
       </div>
     </section>
 

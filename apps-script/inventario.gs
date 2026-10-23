@@ -1,12 +1,14 @@
-// v5.4-inv - Inventário: A..N
+// v5.5-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
 // I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
 //        (Configurações do projeto > Propriedades do script), formato: nome:senha, um por linha
 // upload_foto: slot 1..4 grava em I..L e salva arquivo como row_slot.ext (ex: 6_1.jpg)
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
+// lista_inv: todas as linhas com campo1 (qualquer campo2), mais recente primeiro
 
-const SCRIPT_VERSION = "v5.4-inv";
+const SCRIPT_VERSION = "v5.5-inv";
+const LISTA_MAX = 200; // limite de itens do lista_inv
 const NCOLS = 14; // A..N
 
 const INVENTARIO_ID  = "1CheE1Vpy-hldpiSbl6EC79VI_8DMxDmJ74XW8jevzN8";
@@ -108,6 +110,33 @@ function doGet(e) {
       }
 
       return json_({ ok:true, version: SCRIPT_VERSION, found:false });
+    }
+
+    if (mode === "lista_inv") {
+      if (!String(p.campo1 || "").trim()) {
+        return json_({ ok:false, version: SCRIPT_VERSION, error:"campo1 é obrigatório" });
+      }
+
+      const sh = getSheet_();
+      ensureHeader_(sh);
+
+      const last = sh.getLastRow();
+      if (last < 2) return json_({ ok:true, version: SCRIPT_VERSION, itens:[], total:0 });
+
+      const campo1 = normCodigo_(p.campo1);
+      const values = sh.getRange(2, 1, last - 1, NCOLS).getValues();
+
+      // De baixo para cima: mais recente primeiro; ignora linhas limpas
+      const itens = [];
+      let total = 0;
+      for (let i = values.length - 1; i >= 0; i--) {
+        const v = values[i];
+        if (String(v[0] || "").trim() === "" || normCodigo_(v[0]) !== campo1) continue;
+        total++;
+        if (itens.length < LISTA_MAX) itens.push(Object.assign({ row: i + 2 }, rowToData_(v)));
+      }
+
+      return json_({ ok:true, version: SCRIPT_VERSION, itens, total, truncado: total > itens.length });
     }
 
     if (mode === "clear_lin") {

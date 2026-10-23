@@ -1,3 +1,5 @@
+// v5.6.0 - Seção 5 "Dados completos": Busca completa por Código 9 (lista_inv + patrimonio_por_h)
+//        - Clique em uma ocorrência abre Consultar Inventário com a linha preenchida
 // v5.5.0 - Login com usuário + senha por pessoa (validado nos Apps Scripts)
 //        - Todas as chamadas enviam user/pass; "acesso negado" volta para o login
 // v5.4.0 - Consulta ítem dividida em 4 seções + botão Consultar na própria tela
@@ -6,7 +8,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.5.0";
+const APP_VERSION = "v5.6.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -91,6 +93,7 @@ function syncCampo1ToCadastro() {
   slave.value = master.value;
   setCampo1Classes(master, master.value);
   setCampo1Classes(slave, slave.value);
+  atualizarBotaoBuscaCompleta();
 }
 
 function syncCampo2ToCadastro() {
@@ -107,6 +110,7 @@ function syncCadastroToMaster() {
     master1.value = slave1.value;
     setCampo1Classes(master1, master1.value);
     setCampo1Classes(slave1, slave1.value);
+    atualizarBotaoBuscaCompleta();
   }
 
   const master2 = document.getElementById("campo2");
@@ -278,6 +282,7 @@ window.addEventListener("DOMContentLoaded", () => {
   onlyDigits(andar, "Andar");
   onlyDigits(numInv, "NumInv");
   onlyDigits(codigoC, "Codigo C");
+  if (codigoC) codigoC.addEventListener("input", atualizarBotaoBuscaCompleta);
 
   if (campo1) campo1.addEventListener("input", () => setCampo1CorPorTamanho(campo1.value.trim()));
 
@@ -541,6 +546,7 @@ function consultarDados() {
   if (elDescPT) elDescPT.value = "";
 
   limparUltimoInventario("");
+  limparListaInventario();
 
   if (!parte0) {
     if (!codigoC) {
@@ -645,6 +651,121 @@ function consultarDados() {
 /* =========================
    ÚLTIMO INVENTÁRIO (Código 9 + Código individual)
 ========================= */
+
+/* =========================
+   DADOS COMPLETOS: todas as ocorrências de inventário do Código 9
+========================= */
+
+function atualizarBotaoBuscaCompleta() {
+  const btn = document.getElementById("btn-busca-completa");
+  if (!btn) return;
+  const c9 = (document.getElementById("campo1")?.value || "").trim();
+  const cc = (document.getElementById("codigo-c-input")?.value || "").trim();
+  btn.disabled = !(c9 || cc);
+}
+
+function limparListaInventario(msg) {
+  const ul = document.getElementById("lista-inv");
+  if (ul) ul.replaceChildren();
+  const tit = document.getElementById("lista-inv-titulo");
+  if (tit) tit.innerText = msg || "";
+}
+
+// Compara códigos sem zeros à esquerda (a planilha pode guardar como número)
+function semZeros(v) {
+  const s = String(v == null ? "" : v).trim().replace(/^0+/, "");
+  return s === "" ? "0" : s;
+}
+
+async function buscaCompletaUI() {
+  let c9 = (document.getElementById("campo1")?.value || "").trim();
+  const codigoC = (document.getElementById("codigo-c-input")?.value || "").trim();
+
+  if (!c9 && !codigoC) { limparListaInventario("Informe o Código 9 ou o Código C."); return; }
+
+  if (!c9) {
+    limparListaInventario("Convertendo Código C...");
+    const urlHporL = `${ENDPOINT_CONSULTA}?mode=h_por_l&l=${encodeURIComponent(formatarCodigoC(codigoC))}&t=${Date.now()}`;
+    logDebug("GET Busca completa (L->H): " + urlHporL);
+    try {
+      const raw = await apiGet(urlHporL);
+      logDebug("Resposta Busca completa (L->H) raw: " + raw);
+      let j=null; try{ j=JSON.parse(raw); }catch{}
+      c9 = (j && j.ok) ? String(j.h || "").trim() : "";
+    } catch (err) {
+      logDebug("Erro Busca completa (L->H): " + err);
+    }
+    if (!c9) { limparListaInventario("Código C não encontrado."); return; }
+
+    document.getElementById("campo1").value = c9;
+    syncCampo1ToCadastro();
+  }
+
+  await listarInventario(c9);
+}
+
+async function listarInventario(c9) {
+  limparListaInventario("Buscando ocorrências de inventário...");
+
+  const urlLista = `${ENDPOINT_REGISTRO}?mode=lista_inv&campo1=${encodeURIComponent(c9)}&t=${Date.now()}`;
+  const urlPat = `${ENDPOINT_CONSULTA}?mode=patrimonio_por_h&h=${encodeURIComponent(c9)}&t=${Date.now()}`;
+  logDebug("GET Lista inventário (lista_inv): " + urlLista);
+  logDebug("GET Patrimônio (patrimonio_por_h): " + urlPat);
+
+  let j = null, mapa = {};
+  try {
+    const [rawLista, rawPat] = await Promise.all([
+      apiGet(urlLista),
+      apiGet(urlPat).catch(err => { logDebug("Erro patrimonio_por_h: " + err); return ""; })
+    ]);
+    logDebug("Resposta lista_inv raw: " + rawLista);
+    logDebug("Resposta patrimonio_por_h raw: " + rawPat);
+    try { j = JSON.parse(rawLista); } catch {}
+    try {
+      const p = JSON.parse(rawPat);
+      if (p && p.ok && p.mapa) Object.keys(p.mapa).forEach(k => { mapa[semZeros(k)] = p.mapa[k]; });
+    } catch {}
+  } catch (err) {
+    logDebug("Erro lista_inv: " + err);
+    limparListaInventario("Erro ao buscar ocorrências (ver debug).");
+    return;
+  }
+
+  if (!(j && j.ok && Array.isArray(j.itens))) {
+    limparListaInventario("Falha ao buscar ocorrências (ver debug).");
+    return;
+  }
+  if (!j.itens.length) {
+    limparListaInventario(`Nenhuma ocorrência de inventário para o código ${c9}.`);
+    return;
+  }
+
+  const extra = j.truncado ? ` (mostrando ${j.itens.length} de ${j.total})` : "";
+  limparListaInventario(`Ocorrências de inventário para código ${c9}${extra}`);
+
+  const ul = document.getElementById("lista-inv");
+  j.itens.forEach(d => {
+    const gt = mapa[semZeros(d.campo2)] || "GT-?";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "item-inv";
+    btn.textContent =
+      `[${d.numInv || "—"}] Inventário – Código 9 ${d.campo1 || ""} – Código individual ${d.campo2 || ""} – ` +
+      `${gt} – Pátio ${d.loc || ""} – Rua ${d.rua || ""} – Andar ${d.andar || ""} – Linha inventário: ${d.row}`;
+    btn.addEventListener("click", () => abrirLinhaInventario(d.row));
+    const li = document.createElement("li");
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
+function abrirLinhaInventario(row) {
+  showScreen("inventario");
+  const inp = document.getElementById("linha_consulta");
+  if (inp) inp.value = String(row);
+  window.scrollTo(0, 0);
+  consultarLinhaInventario(Number(row));
+}
 
 function limparUltimoInventario(msg) {
   ["ult-data","ult-patio","ult-rua","ult-andar"].forEach(id => {
