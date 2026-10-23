@@ -1,3 +1,4 @@
+// v5.8.1 - index.html carrega app.js/style.css com ?v= (evita cache antigo no celular); versão no menu
 // v5.8.0 - Sinal de comunicação no topo: vermelho (em andamento), verde (pronto), amarelo (terminou com erro)
 // v5.7.0 - Cadastro com leitura de QR, "Último inventário" (mode=ultimo_numinv) e GPS marcado
 //        - Consulta ítem seção 4: botão Localização (Google Maps a partir do GPS gravado)
@@ -11,7 +12,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.8.0";
+const APP_VERSION = "v5.8.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -159,7 +160,7 @@ function authParams() {
 
 function atualizarUsuarioUI() {
   const el = document.getElementById("user-info");
-  if (el) el.textContent = AUTH.user ? `Usuário: ${AUTH.user}` : "";
+  if (el) el.textContent = (AUTH.user ? `Usuário: ${AUTH.user} · ` : "") + APP_VERSION;
 }
 
 function mostrarLogin(msg) {
