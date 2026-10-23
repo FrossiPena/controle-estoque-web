@@ -197,7 +197,7 @@ function renderSinal() {
   if (!el) return;
   const estado = NET.ativos > 0 ? "ocupado" : (NET.erro ? "erro" : "pronto");
   el.dataset.estado = estado;
-  const rotulo = { ocupado: "Consultando…", pronto: "Pronto", erro: "Com erro" }[estado];
+  const rotulo = { ocupado: "Consultando…", pronto: "Pronto", erro: "erro" }[estado];
   const dica = { ocupado: "Consulta em andamento", pronto: "Consulta terminou", erro: "Consulta terminou com erro (ver Debug)" }[estado];
   if (txt) txt.textContent = rotulo;
   el.title = NET.ativos > 1 ? `${dica} (${NET.ativos} chamadas)` : dica;
