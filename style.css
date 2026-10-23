@@ -1,4 +1,4 @@
-/* style_v5.7.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.8.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -338,3 +338,39 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 }
 .user-info{ font-size: 13px; opacity: .85; }
 #btn-sair{ background: rgba(255,255,255,.14); color: #fff; }
+
+/* Sinal de comunicação (topbar) */
+.net-status{
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.net-dot{
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85);
+}
+.net-status[data-estado="ocupado"] .net-dot{
+  background: #ef4444;
+  animation: net-pulso 1s ease-in-out infinite;
+}
+.net-status[data-estado="erro"] .net-dot{ background: #facc15; }
+@keyframes net-pulso{
+  0%, 100%{ transform: scale(1); opacity: 1; }
+  50%{ transform: scale(1.35); opacity: .6; }
+}
+@media (prefers-reduced-motion: reduce){
+  .net-status[data-estado="ocupado"] .net-dot{ animation: none; }
+}
+@media (max-width: 360px){
+  .net-text{ display: none; }
+}
