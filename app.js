@@ -1,3 +1,5 @@
+// v5.7.0 - Cadastro com leitura de QR, "Último inventário" (mode=ultimo_numinv) e GPS marcado
+//        - Consulta ítem seção 4: botão Localização (Google Maps a partir do GPS gravado)
 // v5.6.0 - Seção 5 "Dados completos": Busca completa por Código 9 (lista_inv + patrimonio_por_h)
 //        - Clique em uma ocorrência abre Consultar Inventário com a linha preenchida
 // v5.5.0 - Login com usuário + senha por pessoa (validado nos Apps Scripts)
@@ -8,7 +10,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.6.0";
+const APP_VERSION = "v5.7.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -28,6 +30,9 @@ let FOTO_URLS = { 1:"", 2:"", 3:"", 4:"" };
 
 // URLs das fotos do último inventário (tela Consulta ítem)
 let FOTO_URLS_ULT = { 1:"", 2:"", 3:"", 4:"" };
+
+// Link do Google Maps do último inventário (tela Consulta ítem)
+let ULT_GPS_URL = "";
 
 // Modal/upload control
 let pendingFoto = null; // {row, slot, origem}
@@ -61,6 +66,9 @@ function showScreen(key) {
     debug: { id: "screen-debug", name: "Debug" },
   };
 
+  // Só uma câmera por vez: trocar de tela para o leitor
+  if (key !== CURRENT_SCREEN) pararLeitor();
+
   Object.keys(map).forEach(k => {
     const sec = document.getElementById(map[k].id);
     if (sec) sec.hidden = (k !== key);
@@ -72,6 +80,8 @@ function showScreen(key) {
 
   CURRENT_SCREEN = key;
   setScreenName(map[key]?.name || "");
+
+  if (key === "cadastro" && AUTH.user) carregarUltimoNumInv();
 }
 
 /* =========================
@@ -434,10 +444,10 @@ function fecharModalFoto() {
    QR / Scanner
 ========================= */
 
-function iniciarLeitor() {
+function iniciarLeitor(alvoId = "qr-reader") {
   if (scannerRunning) return;
-  logDebug("Iniciando leitor...");
-  html5QrCode = new Html5Qrcode("qr-reader");
+  logDebug(`Iniciando leitor (${alvoId})...`);
+  html5QrCode = new Html5Qrcode(alvoId);
 
   leituraProcessada = false;
   lastHandledAt = 0;
@@ -513,6 +523,8 @@ function processarQRCode(qrCodeMessage) {
   if (parte1Limpo === "") parte1Limpo = "0";
 
   document.getElementById("codigo-lido").value = qrCodeMessage;
+  const lidoCad = document.getElementById("codigo-lido-cad");
+  if (lidoCad) lidoCad.value = qrCodeMessage;
   document.getElementById("campo1").value = parte0;
   document.getElementById("campo2").value = parte1Limpo;
 
@@ -767,12 +779,62 @@ function abrirLinhaInventario(row) {
   consultarLinhaInventario(Number(row));
 }
 
+// GPS gravado por obterGpsString ("lat=..., lon=..., acc_m=..., ts=...") ou "lat, lon" -> link do Google Maps
+function gpsParaMapsUrl(gps) {
+  const s = String(gps || "").trim();
+  if (!s) return "";
+  let m = s.match(/lat\s*=\s*(-?\d+(?:\.\d+)?)[\s\S]*?lon\s*=\s*(-?\d+(?:\.\d+)?)/i);
+  if (!m) m = s.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return "";
+  const lat = Number(m[1]), lon = Number(m[2]);
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return "";
+  if (lat === 0 && lon === 0) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+}
+
+function atualizarBotaoLocalUlt(gps) {
+  ULT_GPS_URL = gpsParaMapsUrl(gps);
+  const btn = document.getElementById("btn-ult-local");
+  if (!btn) return;
+  btn.disabled = !ULT_GPS_URL;
+  btn.title = ULT_GPS_URL ? "Abrir no Google Maps" : "Sem GPS neste registro";
+}
+
+function abrirLocalizacaoUlt() {
+  if (!ULT_GPS_URL) return;
+  window.open(ULT_GPS_URL, "_blank", "noopener,noreferrer");
+}
+
+/* =========================
+   CADASTRO: último NumInv (coluna H) ao lado do campo Inventário
+========================= */
+
+async function carregarUltimoNumInv() {
+  const el = document.getElementById("ult-numinv");
+  if (!el) return;
+  el.textContent = "Último inventário: …";
+
+  const url = `${ENDPOINT_REGISTRO}?mode=ultimo_numinv&t=${Date.now()}`;
+  logDebug("GET Último NumInv (ultimo_numinv): " + url);
+  try {
+    const raw = await apiGet(url);
+    logDebug("Resposta ultimo_numinv raw: " + raw);
+    let j=null; try{ j=JSON.parse(raw); }catch{}
+    if (j && j.ok) el.textContent = `Último inventário: ${String(j.numInv || "").trim() || "—"}`;
+    else el.textContent = "Último inventário: ?";
+  } catch (err) {
+    logDebug("Erro ultimo_numinv: " + err);
+    el.textContent = "Último inventário: ?";
+  }
+}
+
 function limparUltimoInventario(msg) {
   ["ult-data","ult-patio","ult-rua","ult-andar"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
   atualizarBotoesFotosUlt({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
+  atualizarBotaoLocalUlt("");
   const st = document.getElementById("ult-status");
   if (st) st.innerText = msg || "";
 }
@@ -808,6 +870,7 @@ async function consultarUltimoInventario(campo1, campo2) {
     document.getElementById("ult-rua").value   = d.rua || "";
     document.getElementById("ult-andar").value = d.andar || "";
     atualizarBotoesFotosUlt(d);
+    atualizarBotaoLocalUlt(d.gps);
 
     const quem = d.usuario ? ` Registrado por ${d.usuario}.` : "";
     if (st) st.innerText = j.row ? `Linha ${j.row} da tabela de inventário.${quem}` : quem.trim();
@@ -922,6 +985,7 @@ async function registrarMovimentacaoUI() {
     if (j && j.ok && j.appended) {
       if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
+      carregarUltimoNumInv();
 
       const inpLinha = document.getElementById("linha_consulta");
       if (inpLinha) inpLinha.value = String(j.row);
@@ -945,7 +1009,7 @@ async function registrarMovimentacaoUI() {
 
 function limparCamposAposRegistroOK() {
   // limpa itens por item
-  const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input","obs-input"];
+  const ids = ["campo1","codigo-c-input","campo2","rua-input","andar-input","obs-input","codigo-lido","codigo-lido-cad"];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   setCampo1CorPorTamanho("");
   syncCampo1ToCadastro();

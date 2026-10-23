@@ -1,4 +1,4 @@
-// v5.5-inv - Inventário: A..N
+// v5.6-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
 // I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
@@ -6,8 +6,9 @@
 // upload_foto: slot 1..4 grava em I..L e salva arquivo como row_slot.ext (ex: 6_1.jpg)
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
 // lista_inv: todas as linhas com campo1 (qualquer campo2), mais recente primeiro
+// ultimo_numinv: último valor preenchido da coluna H (NumInv), de baixo para cima
 
-const SCRIPT_VERSION = "v5.5-inv";
+const SCRIPT_VERSION = "v5.6-inv";
 const LISTA_MAX = 200; // limite de itens do lista_inv
 const NCOLS = 14; // A..N
 
@@ -137,6 +138,19 @@ function doGet(e) {
       }
 
       return json_({ ok:true, version: SCRIPT_VERSION, itens, total, truncado: total > itens.length });
+    }
+
+    if (mode === "ultimo_numinv") {
+      const sh = getSheet_();
+      const last = sh.getLastRow();
+      if (last < 2) return json_({ ok:true, version: SCRIPT_VERSION, numInv:"", row:0 });
+
+      const colH = sh.getRange(2, 8, last - 1, 1).getValues();
+      for (let i = colH.length - 1; i >= 0; i--) {
+        const v = String(colH[i][0] == null ? "" : colH[i][0]).trim();
+        if (v) return json_({ ok:true, version: SCRIPT_VERSION, numInv: v, row: i + 2 });
+      }
+      return json_({ ok:true, version: SCRIPT_VERSION, numInv:"", row:0 });
     }
 
     if (mode === "clear_lin") {

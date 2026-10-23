@@ -1,4 +1,4 @@
-<!-- index.html - v5.6.0 (Login por usuário + Consulta ítem em 5 seções) -->
+<!-- index.html - v5.7.0 (Login + Consulta ítem em 5 seções + QR no Cadastro) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -159,6 +159,8 @@
             <label for="ult-andar">Andar</label>
             <input type="text" id="ult-andar" readonly />
           </div>
+
+          <button type="button" id="btn-ult-local" onclick="abrirLocalizacaoUlt()" disabled>Localização</button>
         </div>
 
         <div class="foto-links">
@@ -192,6 +194,26 @@
     <section class="frame" id="screen-cadastro" hidden>
       <h2>Cadastro</h2>
 
+      <!-- Leitura do QR Code (mesma da Consulta ítem) -->
+      <div class="secao">
+        <h3>Leitura do QR Code</h3>
+        <p class="secao-info">
+          Aponte a câmera para o QR Code da etiqueta. Código 9 e Código individual são preenchidos automaticamente.
+        </p>
+
+        <div class="scanner-buttons">
+          <button type="button" onclick="iniciarLeitor('qr-reader-cad')">Iniciar Leitura</button>
+          <button type="button" onclick="pararLeitor()">Parar leitura</button>
+        </div>
+
+        <div id="qr-reader-cad" class="qr-reader"></div>
+        <p id="qr-result-cad" class="qr-status">Aguardando leitura...</p>
+
+        <input type="text" id="codigo-lido-cad" placeholder="Código lido automaticamente" readonly />
+      </div>
+
+      <hr class="sep" />
+
       <div class="parsed-fields">
         <input type="text" id="campo1_cad" placeholder="Codigo 9" />
         <input type="text" id="campo2_cad" placeholder="Codigo individual" />
@@ -199,9 +221,10 @@
 
       <textarea id="obs-input" placeholder="Observações" rows="2"></textarea>
 
-      <div class="loc-row">
+      <div class="loc-row loc-row-inv">
         <label for="numinv-input">Inventário</label>
         <input type="text" id="numinv-input" placeholder="NumInv (apenas números)" />
+        <span id="ult-numinv" class="ult-numinv">Último inventário: …</span>
       </div>
 
       <div class="loc-fields">
@@ -234,7 +257,7 @@
         <button type="button" id="btn-registrar" onclick="registrarMovimentacaoUI()">Registrar</button>
 
         <label class="gps-inline">
-          <input type="checkbox" id="gps-check" />
+          <input type="checkbox" id="gps-check" checked />
           GPS
         </label>
       </div>
