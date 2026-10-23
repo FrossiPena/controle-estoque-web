@@ -1,10 +1,11 @@
-// v4.1 - Consolidado WebApp
+// v4.2 - Consolidado WebApp
+// patrimonio_por_h: mapa Código individual (K) -> Patrimônio (M) para um Código 9 (H)
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
 //        (Configurações do projeto > Propriedades do script), formato: nome:senha, um por linha
 // FIX: adiciona mode=h_por_l (L->H) com formatação Código C e respostas com version
-// Modos: diag, login, gruas, exata, i_por_h, desc_pt, h_por_l
+// Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l
 
-const SCRIPT_VERSION = "v4.1";
+const SCRIPT_VERSION = "v4.2";
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
 
 function doGet(e) {
@@ -124,6 +125,22 @@ function doGet(e) {
       }
     }
     return json({ ok:true, version: SCRIPT_VERSION, exata:(encontrados[0]||""), exatas: encontrados });
+  }
+
+  // mode=patrimonio_por_h (H -> {K: M}) - uma chamada para a lista inteira
+  if (mode === "patrimonio_por_h") {
+    const codigoH = String((params.h || params.codigo || "")).trim();
+    if (!codigoH) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetro 'h' (ou 'codigo') ausente" });
+
+    const alvoH3 = normNumberish(codigoH);
+    const mapa = {};
+    for (let p1 = 1; p1 < data.length; p1++) {
+      if (normNumberish(data[p1][H]) !== alvoH3) continue;
+      const k = normNumberish(data[p1][K]);
+      const m = String(data[p1][M] || "").trim();
+      if (k && m && !(k in mapa)) mapa[k] = m;
+    }
+    return json({ ok:true, version: SCRIPT_VERSION, mapa });
   }
 
   // mode=i_por_h (H->I)

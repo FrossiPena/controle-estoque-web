@@ -1,4 +1,4 @@
-/* style_v5.5.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.6.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -282,6 +282,21 @@ input, textarea, select {
 input[readonly], textarea[readonly]{ background: #f6f7f9; }
 
 #btn-consultar-consulta{ width: 100%; margin-top: 4px; }
+#btn-busca-completa{ width: 100%; margin-top: 4px; }
+
+/* Dados completos: lista de ocorrências */
+.lista-inv-titulo{ margin: 10px 0 6px; font-weight: 700; font-size: 14px; }
+.lista-inv{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.item-inv{
+  width: 100%;
+  text-align: left;
+  line-height: 1.35;
+  font-size: 13px;
+  background: #f6f7f9;
+  border: 1px solid #d7dbe2;
+}
+.item-inv:hover{ background: #eef2ff; }
+.item-inv:active{ background: #dde5ff; }
 
 .hint{
   margin-top: 8px;
