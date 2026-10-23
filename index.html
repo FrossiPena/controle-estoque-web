@@ -1,12 +1,13 @@
-<!-- index.html - v5.8.1 (Login + Consulta ítem em 5 seções + QR no Cadastro + sinal de comunicação) -->
-<!-- Ao publicar nova versão, troque o ?v= de style.css e app.js para o celular não usar arquivos antigos do cache -->
+<!-- index.html - v5.8.2 (Login + Consulta ítem em 5 seções + QR no Cadastro + sinal de comunicação + versão no rodapé) -->
+<!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
+  <meta name="app-version" content="v5.8.2" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.8.1" />
+  <link rel="stylesheet" href="style.css?v=5.8.2" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -319,6 +320,9 @@
     </section>
   </main>
 
+  <!-- Rodapé: versão em execução (preenchido pelo app.js) -->
+  <footer class="app-footer" id="app-footer">Controle de Estoque</footer>
+
   <!-- Input escondido para câmera/arquivo -->
   <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none;" />
 
@@ -336,7 +340,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.8.1"></script>
+  <script src="app.js?v=5.8.2"></script>
 </body>
 </html>
 

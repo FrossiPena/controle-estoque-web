@@ -1,3 +1,4 @@
+// v5.8.2 - Rodapé com a versão em execução; avisa se index.html e app.js estão em versões diferentes
 // v5.8.1 - index.html carrega app.js/style.css com ?v= (evita cache antigo no celular); versão no menu
 // v5.8.0 - Sinal de comunicação no topo: vermelho (em andamento), verde (pronto), amarelo (terminou com erro)
 // v5.7.0 - Cadastro com leitura de QR, "Último inventário" (mode=ultimo_numinv) e GPS marcado
@@ -12,7 +13,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.8.1";
+const APP_VERSION = "v5.8.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -286,6 +287,20 @@ async function fazerLogin(ev) {
 
 carregarAuth();
 
+// Rodapé: mostra a versão do app.js; se o index.html for de outra versão, há arquivo antigo em cache
+function atualizarRodapeVersao() {
+  const el = document.getElementById("app-footer");
+  if (!el) return;
+  const versaoHtml = document.querySelector('meta[name="app-version"]')?.content || "";
+  if (versaoHtml && versaoHtml !== APP_VERSION) {
+    el.textContent = `Controle de Estoque · ${APP_VERSION} · página ${versaoHtml}: recarregue para atualizar`;
+    el.classList.add("app-footer-aviso");
+    logDebug(`Versões diferentes: index.html=${versaoHtml}, app.js=${APP_VERSION}`);
+  } else {
+    el.textContent = `Controle de Estoque · ${APP_VERSION}`;
+  }
+}
+
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
@@ -312,6 +327,8 @@ window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();
   });
+
+  atualizarRodapeVersao();
 
   // Tela padrão
   showScreen("consulta");

@@ -1,4 +1,4 @@
-/* style_v5.8.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.8.2.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -374,3 +374,12 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 @media (max-width: 360px){
   .net-text{ display: none; }
 }
+
+/* Rodapé com a versão */
+.app-footer{
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,.85);
+  padding: 4px 16px 20px;
+}
+.app-footer-aviso{ color: #fde68a; font-weight: 700; }
