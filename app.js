@@ -1,3 +1,5 @@
+// v5.9.0 - Registrar trava até terminar registro + fotos; ciclo de até 4 fotos após registrar
+//        - Tempo limite: 30s registro, 60s por foto; contagem no sinal do topo e "tempo esgotado" em amarelo
 // v5.8.2 - Rodapé com a versão em execução; avisa se index.html e app.js estão em versões diferentes
 // v5.8.1 - index.html carrega app.js/style.css com ?v= (evita cache antigo no celular); versão no menu
 // v5.8.0 - Sinal de comunicação no topo: vermelho (em andamento), verde (pronto), amarelo (terminou com erro)
@@ -13,7 +15,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.8.2";
+const APP_VERSION = "v5.9.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -191,7 +193,7 @@ function respostaNegada(raw) {
    verde quando todas terminaram, amarelo se alguma do lote falhou.
 ========================= */
 
-const NET = { ativos: 0, erro: false };
+const NET = { ativos: 0, erro: false, tempoEsgotado: false, prazos: new Set(), relogio: null };
 
 function renderSinal() {
   const el = document.getElementById("net-status");
@@ -199,14 +201,27 @@ function renderSinal() {
   if (!el) return;
   const estado = NET.ativos > 0 ? "ocupado" : (NET.erro ? "erro" : "pronto");
   el.dataset.estado = estado;
-  const rotulo = { ocupado: "Consultando…", pronto: "Pronto", erro: "erro" }[estado];
-  const dica = { ocupado: "Consulta em andamento", pronto: "Consulta terminou", erro: "Consulta terminou com erro (ver Debug)" }[estado];
+
+  // Chamada com tempo limite em andamento (registro/foto): mostra a contagem regressiva
+  const prazo = NET.prazos.size ? Math.max(...NET.prazos) : 0;
+  const resta = prazo ? Math.max(0, Math.ceil((prazo - Date.now()) / 1000)) : 0;
+
+  const rotulo = {
+    ocupado: prazo ? `Gravando… ${resta}s` : "Consultando…",
+    pronto: "Pronto",
+    erro: NET.tempoEsgotado ? "tempo esgotado" : "erro"
+  }[estado];
+  const dica = {
+    ocupado: prazo ? `Gravação em andamento (tempo limite em ${resta}s)` : "Consulta em andamento",
+    pronto: "Consulta terminou",
+    erro: NET.tempoEsgotado ? "O servidor não respondeu dentro do tempo limite (ver Debug)" : "Consulta terminou com erro (ver Debug)"
+  }[estado];
   if (txt) txt.textContent = rotulo;
   el.title = NET.ativos > 1 ? `${dica} (${NET.ativos} chamadas)` : dica;
 }
 
 function netInicio() {
-  if (NET.ativos === 0) NET.erro = false; // novo lote
+  if (NET.ativos === 0) { NET.erro = false; NET.tempoEsgotado = false; } // novo lote
   NET.ativos++;
   renderSinal();
 }
@@ -217,6 +232,23 @@ function netFim(ok) {
   renderSinal();
 }
 
+function prazoInicio(ms) {
+  const prazo = Date.now() + ms;
+  NET.prazos.add(prazo);
+  if (!NET.relogio) NET.relogio = setInterval(renderSinal, 1000);
+  return prazo;
+}
+
+function prazoFim(prazo) {
+  NET.prazos.delete(prazo);
+  if (!NET.prazos.size && NET.relogio) { clearInterval(NET.relogio); NET.relogio = null; }
+}
+
+// Erro lançado quando a chamada passa do tempo limite
+function erroTempoEsgotado(err) {
+  return !!(err && err.name === "TempoEsgotado");
+}
+
 // Resposta "ok" = HTTP 2xx, JSON válido e sem ok:false
 function respostaOk(resp, raw) {
   if (!resp.ok) return false;
@@ -224,23 +256,39 @@ function respostaOk(resp, raw) {
   return !!(j && j.ok !== false);
 }
 
-// fetch com sinal; retorna { resp, raw } (o texto completo da resposta)
-async function netFetch(url, opts) {
+// fetch com sinal; retorna { resp, raw } (o texto completo da resposta).
+// tempoMs: se informado, desiste depois desse tempo e lança erro "TempoEsgotado".
+async function netFetch(url, opts, tempoMs) {
   netInicio();
-  let ok = false;
+  let ok = false, prazo = 0, timer = null;
+  const ctrl = tempoMs ? new AbortController() : null;
+  if (ctrl) {
+    prazo = prazoInicio(tempoMs);
+    timer = setTimeout(() => ctrl.abort(), tempoMs);
+  }
   try {
-    const resp = await fetch(url, opts);
+    const resp = await fetch(url, Object.assign({}, opts, ctrl ? { signal: ctrl.signal } : {}));
     const raw = await resp.text();
     ok = respostaOk(resp, raw);
     return { resp, raw };
+  } catch (err) {
+    if (ctrl && ctrl.signal.aborted) {
+      NET.tempoEsgotado = true;
+      const e = new Error(`Tempo esgotado (${Math.round(tempoMs / 1000)}s)`);
+      e.name = "TempoEsgotado";
+      throw e;
+    }
+    throw err;
   } finally {
+    if (timer) clearTimeout(timer);
+    if (prazo) prazoFim(prazo);
     netFim(ok);
   }
 }
 
 // GET com credenciais; retorna o texto da resposta (o log mostra a URL sem a senha)
-async function apiGet(url) {
-  const { raw } = await netFetch(url + authParams());
+async function apiGet(url, tempoMs) {
+  const { raw } = await netFetch(url + authParams(), undefined, tempoMs);
   if (respostaNegada(raw)) {
     logDebug("Acesso negado pelo servidor. Voltando para o login.");
     sair("Acesso negado. Entre novamente.");
@@ -396,39 +444,55 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Cancelar / Concluir: encerra o ciclo de fotos (e destrava o Registrar, se veio dele)
   if (btnCancel) {
-    btnCancel.addEventListener("click", () => {
-      fecharModalFoto();
-      pendingFoto = null;
-    });
+    btnCancel.addEventListener("click", () => encerrarCicloFotos());
   }
 
   if (fileInput) {
     fileInput.addEventListener("change", async () => {
-      // ✅ FECHA O MODAL IMEDIATAMENTE após tirar/selecionar (pedido do usuário)
-      fecharModalFoto();
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return; // câmera cancelada: a janela continua aberta
+
+      if (!pendingFoto || !pendingFoto.row || !pendingFoto.slot) {
+        logDebug("foto-input: pendingFoto vazio. Cancelando upload.");
+        encerrarCicloFotos();
+        return;
+      }
+
+      const { row, slot, origem } = pendingFoto;
+      logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
+
+      // A janela fica aberta mostrando o envio (botões travados)
+      estadoModalFoto({ texto: `Linha ${row} — enviando Foto ${slot}…`, abrir: null, fechar: null });
+      setStatusCadastro(`Enviando Foto ${slot} da linha ${row}…`);
 
       try {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) { pendingFoto = null; return; }
-
-        if (!pendingFoto || !pendingFoto.row || !pendingFoto.slot) {
-          logDebug("foto-input: pendingFoto vazio. Cancelando upload.");
-          pendingFoto = null;
-          return;
-        }
-
-        const { row, slot, origem } = pendingFoto;
-        pendingFoto = null;
-
-        logDebug(`Foto selecionada (${origem}). row=${row}, slot=${slot}, name=${file.name}, type=${file.type}, size=${file.size}`);
-
         const j = await uploadFotoParaLinha(row, slot, file);
         logDebug(`Foto OK: row=${j.row} slot=${j.slot} url=${j.fotoUrl}`);
+        setStatusCadastro(`Foto ${slot} enviada (linha ${row}).`);
+        consultarLinhaInventario(row); // atualiza resumo + habilita/desabilita botões
 
-        await consultarLinhaInventario(row); // atualiza resumo + habilita/desabilita botões
+        if (origem === "registrar" && slot < 4) {
+          // Próxima foto: precisa de um toque do usuário para abrir a câmera
+          pendingFoto = { row, slot: slot + 1, origem };
+          estadoModalFoto({
+            texto: `Linha ${row} — Foto ${slot} enviada ✓. Adicionar outra foto?`,
+            abrir: `Tirar Foto ${slot + 1}`, fechar: "Concluir"
+          });
+        } else {
+          estadoModalFoto({ texto: `Linha ${row} — Foto ${slot} enviada ✓.`, abrir: null, fechar: "Concluir" });
+        }
       } catch (e) {
         logDebug("Erro ao processar/enviar foto: " + e);
+        const motivo = erroTempoEsgotado(e)
+          ? `tempo esgotado (${FOTO_TIMEOUT_MS / 1000}s). Confira em Consultar Inventário antes de reenviar.`
+          : "falha no envio (ver Debug).";
+        setStatusCadastro(`Foto ${slot} da linha ${row}: ${motivo}`);
+        estadoModalFoto({
+          texto: `Linha ${row} — Foto ${slot}: ${motivo}`,
+          abrir: "Tentar de novo", fechar: "Concluir"
+        });
       }
     });
   }
@@ -500,16 +564,40 @@ function abrirFotoUlt(slot) {
 function abrirModalFoto(row, slot, origem) {
   pendingFoto = { row:Number(row), slot:Number(slot), origem:String(origem||"") };
 
+  estadoModalFoto({
+    texto: `Linha ${row} — Foto ${slot}: toque em "Abrir câmera / selecionar arquivo"`,
+    abrir: "Abrir câmera / selecionar arquivo", fechar: "Cancelar"
+  });
   const modal = document.getElementById("foto-modal");
-  const txt = document.getElementById("foto-modal-text");
-
-  if (txt) txt.innerText = `Linha ${row} — Foto ${slot}: clique em "Abrir câmera / selecionar arquivo"`;
   if (modal) modal.style.display = "block";
+}
+
+// Atualiza texto e botões da janela de foto. abrir/fechar = rótulo, ou null para esconder/travar.
+function estadoModalFoto({ texto, abrir, fechar }) {
+  const txt = document.getElementById("foto-modal-text");
+  const btnOpen = document.getElementById("foto-modal-open");
+  const btnCancel = document.getElementById("foto-modal-cancel");
+  if (txt) txt.innerText = texto || "";
+  if (btnOpen) {
+    btnOpen.hidden = !abrir;
+    if (abrir) btnOpen.textContent = abrir;
+  }
+  if (btnCancel) {
+    btnCancel.disabled = !fechar;
+    btnCancel.textContent = fechar || "Aguarde…";
+  }
 }
 
 function fecharModalFoto() {
   const modal = document.getElementById("foto-modal");
   if (modal) modal.style.display = "none";
+}
+
+function encerrarCicloFotos() {
+  fecharModalFoto();
+  const veioDoRegistro = pendingFoto && pendingFoto.origem === "registrar";
+  pendingFoto = null;
+  if (veioDoRegistro || REGISTRO_EM_CURSO) travarRegistro(false);
 }
 
 /* =========================
@@ -994,7 +1082,39 @@ function obterGpsString() {
    REGISTRAR (Inventário)
 ========================= */
 
+// Tempos limite das gravações (ms)
+const REGISTRO_TIMEOUT_MS = 30000;
+const FOTO_TIMEOUT_MS = 60000;
+
+// Registrar fica travado do toque até o fim do registro e das fotos daquele ítem
+let REGISTRO_EM_CURSO = false;
+
+function travarRegistro(on) {
+  REGISTRO_EM_CURSO = !!on;
+  const btn = document.getElementById("btn-registrar");
+  if (!btn) return;
+  btn.disabled = REGISTRO_EM_CURSO;
+  btn.textContent = REGISTRO_EM_CURSO ? "Gravando…" : "Registrar";
+}
+
+function setStatusCadastro(msg) {
+  const status = document.getElementById("status-msg");
+  if (status) status.innerText = msg || "";
+}
+
 async function registrarMovimentacaoUI() {
+  if (REGISTRO_EM_CURSO) return;
+  travarRegistro(true);
+  let liberar = true; // vira false quando o ciclo de fotos assume a liberação
+  try {
+    liberar = await registrarMovimentacao();
+  } finally {
+    if (liberar) travarRegistro(false);
+  }
+}
+
+// Retorna true se o botão pode ser liberado já; false se o ciclo de fotos vai liberar depois
+async function registrarMovimentacao() {
   const status = document.getElementById("status-msg");
 
   const campo1 = (document.getElementById("campo1")?.value || "").trim();
@@ -1018,7 +1138,7 @@ async function registrarMovimentacaoUI() {
   if (!campo1) {
     logDebug("Registrar: campo1 vazio. Cancelando.");
     if (status) status.innerText = "Preencha o campo1 antes de registrar.";
-    return;
+    return true;
   }
 
   gpsString = "";
@@ -1048,7 +1168,7 @@ async function registrarMovimentacaoUI() {
   logDebug("GET Registrar (log_mov): " + urlLog);
 
   try {
-    const raw = await apiGet(urlLog);
+    const raw = await apiGet(urlLog, REGISTRO_TIMEOUT_MS);
     logDebug("Resposta Registrar raw: " + raw);
 
     let j = null;
@@ -1062,21 +1182,30 @@ async function registrarMovimentacaoUI() {
       const inpLinha = document.getElementById("linha_consulta");
       if (inpLinha) inpLinha.value = String(j.row);
 
-      // ✅ NOVO: registrar => foto óbvia = #1 (sem perguntar slot)
-      const querFoto = confirm(`Deseja adicionar uma foto (Foto 1) para a linha ${j.row}?`);
+      limparCamposAposRegistroOK();
+
+      // Registrar => começa pela Foto 1; depois de cada envio a janela oferece a próxima (até 4)
+      const querFoto = confirm(`Deseja adicionar fotos para a linha ${j.row}?`);
       if (querFoto) {
         abrirModalFoto(j.row, 1, "registrar");
+        return false; // o botão Registrar só destrava ao Concluir/Cancelar as fotos
       }
-
-      limparCamposAposRegistroOK();
+      return true;
     } else {
-      if (status) status.innerText = "Falha ao registrar (ver debug).";
+      const ocupado = j && /ocupado/i.test(String(j.error || ""));
+      if (status) status.innerText = ocupado
+        ? "Servidor ocupado, nada foi gravado. Tente de novo."
+        : "Falha ao registrar (ver debug).";
       logDebug("Registrar: resposta inválida/sem ok.");
     }
   } catch (err) {
-    if (status) status.innerText = "Erro de rede ao registrar (ver debug).";
+    // Sem resposta: a linha pode ter sido gravada mesmo assim
+    if (status) status.innerText = (erroTempoEsgotado(err)
+      ? `Tempo esgotado (${REGISTRO_TIMEOUT_MS / 1000}s). `
+      : "Erro de rede. ") + "Sem confirmação do servidor. Confira em 'Último inventário' antes de registrar de novo.";
     logDebug("Erro Registrar: " + err);
   }
+  return true;
 }
 
 function limparCamposAposRegistroOK() {
@@ -1241,7 +1370,7 @@ async function uploadFotoParaLinha(row, slot, file) {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(payload)
-  });
+  }, FOTO_TIMEOUT_MS);
 
   logDebug("Resposta upload_foto raw: " + raw);
   logDebug(`upload_foto HTTP status: ${resp.status}`);
