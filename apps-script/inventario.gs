@@ -1,4 +1,4 @@
-// v5.6-inv - Inventário: A..N
+// v5.7-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
 // I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
@@ -7,8 +7,10 @@
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
 // lista_inv: todas as linhas com campo1 (qualquer campo2), mais recente primeiro
 // ultimo_numinv: último valor preenchido da coluna H (NumInv), de baixo para cima
+// log_mov: grava sob LockService (fila de até LOCK_ESPERA_MS) para cada registro receber a própria linha
 
-const SCRIPT_VERSION = "v5.6-inv";
+const SCRIPT_VERSION = "v5.7-inv";
+const LOCK_ESPERA_MS = 10000; // espera máxima pela vez de gravar; depois responde "servidor ocupado"
 const LISTA_MAX = 200; // limite de itens do lista_inv
 const NCOLS = 14; // A..N
 
@@ -67,8 +69,21 @@ function doGet(e) {
         "", "", "", "", obs, usuario
       ];
 
-      sh.appendRow(rowData);
-      const row = sh.getLastRow();
+      // Sem a trava, dois registros simultâneos podem receber o mesmo número de linha
+      // (e a foto de um iria para a linha do outro). A trava é liberada no finally e,
+      // de qualquer forma, o Google a solta quando a execução termina.
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(LOCK_ESPERA_MS)) {
+        return json_({ ok:false, version: SCRIPT_VERSION, error:"servidor ocupado, nada foi gravado; tente de novo" });
+      }
+      let row;
+      try {
+        sh.appendRow(rowData);
+        SpreadsheetApp.flush();
+        row = sh.getLastRow();
+      } finally {
+        lock.releaseLock();
+      }
 
       return json_({ ok:true, version: SCRIPT_VERSION, appended:true, sheet: INVENTARIO_ABA, row, dataHora });
     }
