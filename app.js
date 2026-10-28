@@ -1,3 +1,6 @@
+// v5.12.0 - Ajuste de machine card: após Registrar, confere código 9 + ID na MachineCards; se não existe,
+//          tela de ajuste (GT → peça → ID de fábrica substituído; alerta de outro modelo pede CONFIRMO).
+//          Equipamento: ID de fábrica em cinza riscado + ID novo com etiqueta AJUSTE
 // v5.11.0 - Equipamento: conferência por inventário (várias seleções); ID verde = inventariado
 //          (toque abre a Consulta ítem já consultada), vermelho = não inventariado
 // v5.10.0 - Tela 4) Equipamento: grua → GT → lança → lanças e tirantes com machine cards do GT
@@ -19,7 +22,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.11.0";
+const APP_VERSION = "v5.12.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -73,6 +76,7 @@ function showScreen(key) {
     cadastro: { id: "screen-cadastro", name: "Cadastro" },
     inventario: { id: "screen-inventario", name: "Consultar Inventário" },
     equipamento: { id: "screen-equipamento", name: "Equipamento" },
+    ajuste: { id: "screen-ajuste", name: "Ajuste de machine card" },
     debug: { id: "screen-debug", name: "Debug" },
   };
 
@@ -389,6 +393,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // Tela padrão
   showScreen("consulta");
+
+  // Ajuste de machine card
+  document.getElementById("aj-gt")?.addEventListener("change", onGtAjuste);
+  document.getElementById("aj-confirmo")?.addEventListener("input", atualizarBotaoAjuste);
+  document.getElementById("aj-gravar")?.addEventListener("click", gravarAjuste);
+  document.getElementById("aj-voltar")?.addEventListener("click", () => showScreen("cadastro"));
 
   // Equipamento
   document.getElementById("eq-grua")?.addEventListener("change", onGruaEq);
@@ -1084,7 +1094,7 @@ function renderListaEq() {
       // IDs do próprio código; depois dos compatíveis
       const achados = [];
       [it.codigo].concat(it.compat || []).forEach((cod, i) => {
-        (mapa[eqChaveC(cod)] || []).forEach(mc => achados.push({ id: mc.id, codigo9: mc.codigo9, compat: i > 0 ? cod : "" }));
+        (mapa[eqChaveC(cod)] || []).forEach(mc => achados.push({ id: mc.id, codigo9: mc.codigo9, compat: i > 0 ? cod : "", ajuste: mc.ajuste || null }));
       });
       if (!achados.length) {
         const a = document.createElement("span");
@@ -1092,11 +1102,26 @@ function renderListaEq() {
         a.textContent = `Sem machine card no ${gt}`;
         ids.appendChild(a);
       } else {
-        achados.forEach(mc => {
+        achados.forEach(fab => {
+          // Com ajuste: o ID de fábrica fica em cinza riscado e a conferência usa a peça nova
+          if (fab.ajuste) {
+            const velho = document.createElement("span");
+            velho.className = "eq-id eq-id-antigo";
+            velho.textContent = `[ID = ${fab.id}]`;
+            velho.title = `ID de fábrica substituído em ${fab.ajuste.data} por ${fab.ajuste.usuario} (aba AJUSTE, linha ${fab.ajuste.linha})`;
+            ids.appendChild(velho);
+          }
+          const mc = fab.ajuste ? { id: fab.ajuste.id, codigo9: fab.ajuste.codigo9, compat: fab.compat, ajuste: fab.ajuste } : fab;
           const inv = inventariadoEq(mc.codigo9, mc.id);   // null = sem conferência
           const chip = document.createElement(inv && inv.length ? "button" : "span");
           chip.className = "eq-id" + (inv === null ? "" : (inv.length ? " eq-id-ok" : " eq-id-falta"));
           chip.textContent = `[ID = ${mc.id}]` + (mc.compat ? ` (compatível ${mc.compat})` : "");
+          if (mc.ajuste) {
+            const tag = document.createElement("span");
+            tag.className = "eq-tag-ajuste";
+            tag.textContent = "AJUSTE";
+            chip.appendChild(tag);
+          }
           if (inv && inv.length) {
             chip.type = "button";
             chip.title = "Inventariado: " + inv.map(x => `inv. ${x.numInv} (linha ${x.row})`).join(", ") + ". Toque para consultar.";
@@ -1127,6 +1152,270 @@ function renderListaEq() {
 
   titulo.textContent = `${grua} · ${gt} · ${lanca}: ${itens.length} itens` +
     (conferindo ? ` · inventariados ${idsOk} de ${idsTotal} peças` : "");
+}
+
+/* =========================
+   AJUSTE DE MACHINE CARD
+   Após Registrar: código 9 + ID existe na MachineCards (ou num ajuste)? Se não, oferece o ajuste:
+   GT → peça (posição) → ID de fábrica substituído → grava na aba AJUSTE (script do Consolidado).
+========================= */
+
+const AJ = {
+  c9: "", id: "",          // peça física registrada
+  conhecido: [],           // onde o código 9 já é conhecido (MachineCards / ajustes)
+  gts: null,               // [{gt, modelo}] da Validação
+  gt: "", modelo: "",
+  posicao: null,           // {codigo, descricao, compat}
+  fab: null,               // ID de fábrica escolhido {id, codigo9}
+  pecasModelo: {}          // modelo -> itens da RELAÇÃO (todas as peças)
+};
+
+function mostrarMcCadastro(estado) {
+  const box = document.getElementById("cad-mc");
+  if (!box) return;
+  box.replaceChildren();
+  box.className = "cad-mc";
+  box.hidden = !estado;
+  if (!estado) return;
+  const p = document.createElement("div");
+  p.textContent = estado.texto;
+  box.appendChild(p);
+  box.classList.add(estado.ok ? "cad-mc-ok" : "cad-mc-falta");
+  if (estado.botao) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Criar ajuste de machine card";
+    b.addEventListener("click", estado.botao);
+    box.appendChild(b);
+  }
+}
+
+async function verificarPecaCadastro(c9, id) {
+  if (!c9 || !id) return;
+  try {
+    const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=verificar_peca&codigo9=${encodeURIComponent(c9)}&id=${encodeURIComponent(id)}&t=${Date.now()}`);
+    if (!(j && j.ok)) throw new Error(j && j.error || "resposta inválida");
+    if (j.existe) {
+      mostrarMcCadastro({ ok: true, texto: `✓ Machine card encontrado: ${c9} / ID ${id} (${j.gt}${j.origem === "ajuste" ? ", por ajuste" : ""}).` });
+    } else {
+      mostrarMcCadastro({
+        ok: false,
+        texto: `⚠ A peça ${c9} / ID ${id} não consta na MachineCards. Se ela substituiu uma peça de fábrica, crie um ajuste.`,
+        botao: () => abrirAjuste(c9, id, j.conhecido || [])
+      });
+    }
+  } catch (err) {
+    logDebug("Erro verificar_peca: " + err);
+    mostrarMcCadastro({ ok: false, texto: "Não foi possível conferir a peça na MachineCards (ver Debug)." });
+  }
+}
+
+function ajStatus(msg) {
+  const el = document.getElementById("aj-status");
+  if (el) el.textContent = msg || "";
+}
+
+async function abrirAjuste(c9, id, conhecido) {
+  Object.assign(AJ, { c9: String(c9), id: String(id), conhecido, gt: "", modelo: "", posicao: null, fab: null });
+  showScreen("ajuste");
+  window.scrollTo(0, 0);
+  document.getElementById("aj-peca").textContent = `Peça registrada: código 9 ${c9} · ID ${id}`;
+  document.getElementById("aj-obs").value = "";
+  document.getElementById("aj-confirmo").value = "";
+  document.getElementById("aj-alerta").hidden = true;
+  document.getElementById("aj-posicao").replaceChildren();
+  document.getElementById("aj-ids").replaceChildren();
+  ajStatus(conhecido.length
+    ? "Código 9 já conhecido: " + [...new Set(conhecido.map(x => x.modelo || x.gt))].join(", ") + "."
+    : "Código 9 inédito: escolha a peça na lista do modelo.");
+  atualizarBotaoAjuste();
+
+  const sel = document.getElementById("aj-gt");
+  try {
+    if (!AJ.gts) {
+      sel.disabled = true;
+      const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=gts_todos&t=${Date.now()}`);
+      if (!(j && j.ok && Array.isArray(j.gts))) throw new Error(j && j.error || "resposta inválida");
+      AJ.gts = j.gts;
+    }
+    sel.replaceChildren();
+    const ph = document.createElement("option"); ph.value = ""; ph.textContent = "Selecione o GT…"; sel.appendChild(ph);
+    AJ.gts.forEach(g => { const o = document.createElement("option"); o.value = g.gt; o.textContent = `${g.gt} · ${g.modelo}`; sel.appendChild(o); });
+    sel.disabled = false;
+  } catch (err) {
+    logDebug("Erro gts_todos: " + err);
+    ajStatus("Erro ao carregar os GTs (ver Debug).");
+  }
+}
+
+async function onGtAjuste() {
+  const gt = document.getElementById("aj-gt").value;
+  const g = (AJ.gts || []).find(x => x.gt === gt);
+  Object.assign(AJ, { gt, modelo: g ? g.modelo : "", posicao: null, fab: null });
+  document.getElementById("aj-posicao").replaceChildren();
+  document.getElementById("aj-ids").replaceChildren();
+  document.getElementById("aj-alerta").hidden = true;
+  atualizarBotaoAjuste();
+  if (!gt) return;
+
+  // Peças do modelo (RELAÇÃO): descrições para as posições conhecidas e lista para escolha
+  let pecas = AJ.pecasModelo[AJ.modelo];
+  if (!pecas) {
+    ajStatus("Carregando as peças do " + AJ.modelo + "…");
+    try {
+      const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=lancas_grua&todas=1&grua=${encodeURIComponent(AJ.modelo)}&t=${Date.now()}`);
+      if (!(j && j.ok)) throw new Error(j && j.error || "resposta inválida");
+      pecas = AJ.pecasModelo[AJ.modelo] = j.itens || [];
+      ajStatus(j.encontrado ? "" : `A RELAÇÃO não tem aba "${AJ.modelo}".`);
+    } catch (err) {
+      logDebug("Erro peças do modelo: " + err);
+      ajStatus("Erro ao carregar as peças do modelo (ver Debug).");
+      return;
+    }
+  }
+  if (gt !== AJ.gt) return; // trocou de GT enquanto carregava
+
+  const doModelo = AJ.conhecido.filter(x => eqNorm(x.modelo) === eqNorm(AJ.modelo));
+  if (doModelo.length) {
+    // Código 9 conhecido neste modelo: posição(ões) já identificadas
+    const pos = [];
+    doModelo.forEach(x => {
+      const k = eqChaveC(x.codigoC);
+      if (pos.some(p => eqChaveC(p.codigo) === k)) return;
+      const it = pecas.find(p => eqChaveC(p.codigo) === k || (p.compat || []).some(c => eqChaveC(c) === k));
+      pos.push(it ? { codigo: it.codigo, descricao: it.descricao, compat: it.compat || [], grupo: it.grupo }
+                  : { codigo: x.codigoC, descricao: x.descricao || "(peça não encontrada na RELAÇÃO)", compat: [], grupo: "" });
+    });
+    renderPosicoesAjuste(pos, pos.length === 1 ? "Peça identificada pelo código 9:" : "O código 9 aparece em mais de uma peça; escolha:", false);
+    if (pos.length === 1) escolherPosicaoAjuste(pos[0]);
+  } else {
+    if (AJ.conhecido.length) {
+      // Trava contra engano: código 9 só conhecido em outro modelo
+      const outros = [...new Set(AJ.conhecido.map(x => `${x.modelo || "?"} (${x.gt})`))].join(", ");
+      document.getElementById("aj-alerta-texto").textContent =
+        `⚠ Este código 9 pertence a outro modelo de grua: ${outros}. A intercambiabilidade estrutural entre modelos é baixa. ` +
+        `Tem certeza absoluta de que a peça está no ${AJ.gt} (${AJ.modelo})?`;
+      document.getElementById("aj-alerta").hidden = false;
+    }
+    renderPosicoesAjuste(pecas, "Qual é esta peça? (lista do " + AJ.modelo + ")", true);
+  }
+}
+
+// Lista de posições (peças da RELAÇÃO) para escolher; com busca quando é a lista completa
+function renderPosicoesAjuste(pecas, titulo, comBusca) {
+  const box = document.getElementById("aj-posicao");
+  box.replaceChildren();
+  const h = document.createElement("p"); h.className = "campo-label"; h.textContent = titulo; box.appendChild(h);
+  let busca = null;
+  if (comBusca) {
+    busca = document.createElement("input");
+    busca.type = "search"; busca.placeholder = "Buscar (ex.: lança 1, tirante 8756, C051…)";
+    box.appendChild(busca);
+  }
+  const lista = document.createElement("div"); lista.className = "aj-bloco"; box.appendChild(lista);
+  const desenhar = () => {
+    lista.replaceChildren();
+    const termo = eqNorm(busca ? busca.value : "");
+    let grupo = null;
+    pecas.filter(p => !termo || eqNorm(`${p.grupo} ${p.descricao} ${p.codigo}`).includes(termo)).forEach(p => {
+      if (comBusca && p.grupo !== grupo) {
+        grupo = p.grupo;
+        const g = document.createElement("p"); g.className = "aj-grupo"; g.textContent = grupo || "Outros"; lista.appendChild(g);
+      }
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "aj-opcao" + (AJ.posicao && eqChaveC(AJ.posicao.codigo) === eqChaveC(p.codigo) ? " aj-opcao-sel" : "");
+      b.textContent = `${p.descricao} · ${p.codigo}`;
+      b.addEventListener("click", () => { escolherPosicaoAjuste(p); desenhar(); });
+      lista.appendChild(b);
+    });
+    if (!lista.children.length) { const v = document.createElement("p"); v.className = "secao-info"; v.textContent = "Nenhuma peça encontrada."; lista.appendChild(v); }
+  };
+  if (busca) busca.addEventListener("input", desenhar);
+  desenhar();
+}
+
+// Posição escolhida: lista os IDs de fábrica daquele GT nessa posição (código ou compatíveis)
+async function escolherPosicaoAjuste(p) {
+  AJ.posicao = { codigo: p.codigo, descricao: p.descricao, compat: p.compat || [] };
+  AJ.fab = null;
+  atualizarBotaoAjuste();
+  const box = document.getElementById("aj-ids");
+  box.replaceChildren();
+  const gt = AJ.gt;
+  let mapa = EQ.mcPorGt[gt];
+  if (!mapa) {
+    try {
+      const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=machinecards_por_gt&gt=${encodeURIComponent(gt)}&t=${Date.now()}`);
+      if (!(j && j.ok)) throw new Error(j && j.error || "resposta inválida");
+      mapa = EQ.mcPorGt[gt] = j.mapa || {};
+    } catch (err) {
+      logDebug("Erro machinecards_por_gt (ajuste): " + err);
+      ajStatus("Erro ao buscar os machine cards do " + gt + " (ver Debug).");
+      return;
+    }
+  }
+  if (gt !== AJ.gt || AJ.posicao.codigo !== p.codigo) return;
+
+  const fabs = [];
+  [p.codigo].concat(p.compat || []).forEach(c => (mapa[eqChaveC(c)] || []).forEach(mc => fabs.push(mc)));
+  const h = document.createElement("p"); h.className = "campo-label";
+  h.textContent = fabs.length ? `Qual ID de fábrica do ${gt} esta peça substitui?` : `Nenhum machine card de fábrica do ${gt} nesta posição: não há o que ajustar.`;
+  box.appendChild(h);
+  const desenhar = () => {
+    box.querySelectorAll(".aj-opcao").forEach(b => b.remove());
+    fabs.forEach(mc => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "aj-opcao" + (AJ.fab && AJ.fab.id === mc.id && AJ.fab.codigo9 === mc.codigo9 ? " aj-opcao-sel" : "");
+      b.textContent = `ID ${mc.id} · código 9 ${mc.codigo9}` + (mc.ajuste ? ` (já ajustado para ID ${mc.ajuste.id} em ${mc.ajuste.data})` : "");
+      b.addEventListener("click", () => { AJ.fab = { id: mc.id, codigo9: mc.codigo9 }; desenhar(); atualizarBotaoAjuste(); });
+      box.appendChild(b);
+    });
+  };
+  desenhar();
+}
+
+function atualizarBotaoAjuste() {
+  const btn = document.getElementById("aj-gravar");
+  if (!btn) return;
+  const alerta = !document.getElementById("aj-alerta").hidden;
+  const confirmado = document.getElementById("aj-confirmo").value.trim().toUpperCase() === "CONFIRMO";
+  btn.disabled = !(AJ.gt && AJ.posicao && AJ.fab && (!alerta || confirmado));
+}
+
+async function gravarAjuste() {
+  const btn = document.getElementById("aj-gravar");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  ajStatus("Gravando ajuste…");
+  const p = new URLSearchParams({
+    mode: "gravar_ajuste", gt: AJ.gt, posicao: AJ.posicao.codigo, descricao: AJ.posicao.descricao,
+    c9_antigo: AJ.fab.codigo9, id_antigo: AJ.fab.id, c9_novo: AJ.c9, id_novo: AJ.id,
+    obs: document.getElementById("aj-obs").value.trim(),
+    confirmacao: document.getElementById("aj-confirmo").value.trim(), t: String(Date.now())
+  });
+  try {
+    const j = await eqGetJson(`${ENDPOINT_CONSULTA}?${p.toString()}`);
+    if (j && j.ok && j.gravado) {
+      delete EQ.mcPorGt[AJ.gt];          // Equipamento passa a mostrar o ajuste
+      ajStatus(`Ajuste gravado (aba AJUSTE, linha ${j.linha}): ${AJ.gt}, ${AJ.posicao.descricao}, ID ${AJ.fab.id} → ${AJ.id}.`);
+      mostrarMcCadastro({ ok: true, texto: `✓ Ajuste gravado: ${AJ.c9} / ID ${AJ.id} substitui o ID ${AJ.fab.id} no ${AJ.gt}.` });
+      AJ.conhecido = [{ modelo: AJ.modelo, gt: AJ.gt, codigoC: AJ.posicao.codigo, origem: "ajuste" }];
+      return; // botão fica travado: ajuste concluído
+    }
+    if (j && j.precisaConfirmar) {
+      document.getElementById("aj-alerta-texto").textContent = "⚠ " + j.alerta;
+      document.getElementById("aj-alerta").hidden = false;
+      ajStatus("Confirme digitando CONFIRMO.");
+    } else {
+      ajStatus("Não gravado: " + ((j && j.error) || "resposta inválida (ver Debug)"));
+    }
+  } catch (err) {
+    logDebug("Erro gravar_ajuste: " + err);
+    ajStatus("Erro ao gravar o ajuste (ver Debug).");
+  }
+  atualizarBotaoAjuste();
 }
 
 /* =========================
@@ -1410,6 +1699,7 @@ function setStatusCadastro(msg) {
 async function registrarMovimentacaoUI() {
   if (REGISTRO_EM_CURSO) return;
   travarRegistro(true);
+  mostrarMcCadastro(null);
   let liberar = true; // vira false quando o ciclo de fotos assume a liberação
   try {
     liberar = await registrarMovimentacao();
@@ -1487,6 +1777,7 @@ async function registrarMovimentacao() {
       const inpLinha = document.getElementById("linha_consulta");
       if (inpLinha) inpLinha.value = String(j.row);
 
+      verificarPecaCadastro(campo1, campo2); // em paralelo: a peça existe na MachineCards?
       limparCamposAposRegistroOK();
 
       // Registrar => começa pela Foto 1; depois de cada envio a janela oferece a próxima (até 4)

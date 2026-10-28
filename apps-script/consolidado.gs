@@ -1,4 +1,9 @@
-// v4.4 - Consolidado WebApp
+// v4.5 - Consolidado WebApp
+// Ajuste de machine card: aba AJUSTE (registro, só acrescenta linhas) nesta planilha.
+//   verificar_peca (código 9 + ID existe? se não, onde o código 9 é conhecido), gts_todos (GT → modelo),
+//   gravar_ajuste (valida, alerta de outro modelo exige "CONFIRMO", grava sob LockService),
+//   machinecards_por_gt passa a trazer o ajuste mais recente de cada ID; lancas_grua aceita todas=1.
+// v4.4
 // lancas_grua passa a ler a própria RELAÇÃO (aba do modelo): cabeçalho na linha 2, COMPATÍVEL 1..4 em C–F,
 //            GT em K, comprimentos de lança ("75m"…) a partir de L; grupo = linha de seção (ex.: "LANÇA")
 // v4.3 - Tela Equipamento: gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
@@ -10,7 +15,12 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.4";
+const SCRIPT_VERSION = "v4.5";
+const TZ = "America/Sao_Paulo";
+const AJUSTE_ABA = "AJUSTE";
+const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
+                    "CODIGO9 ANTIGO", "ID ANTIGO", "CODIGO9 NOVO", "ID NOVO", "ALERTA", "OBS"];
+const LOCK_ESPERA_MS = 10000;
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
 
 function doGet(e) {
@@ -58,6 +68,11 @@ function doGet(e) {
     return json({ ok:true, version: SCRIPT_VERSION, gts });
   }
 
+  // mode=gts_todos: todos os GTs da Validação com o modelo (para o ajuste de machine card)
+  if (mode === "gts_todos") {
+    return json({ ok:true, version: SCRIPT_VERSION, gts: gtModelos_() });
+  }
+
   // mode=lancas_grua: aba do modelo na RELAÇÃO. Cabeçalho na linha 2; colunas achadas pelo nome:
   // DESCRIÇÃO, CÓDIGO LBR, COMPRIMENTO, GT, COMPATÍVEL n e comprimentos de lança ("75m" / "36,7m").
   // Célula de comprimento = quantidade. Linha sem código (ex.: "LANÇA") = título de grupo.
@@ -88,7 +103,7 @@ function doGet(e) {
       if (!/[0-9a-z]/i.test(codigo)) { if (descricao) grupo = descricao; return; } // sem código (ou "-") = título de grupo
       const qtd = {};
       cLanca.forEach(i => { const q = Number(r[i]); if (q > 0) qtd[cab[i]] = q; });
-      if (!Object.keys(qtd).length) return;  // a tela só usa peças com quantidade em algum comprimento
+      if (!Object.keys(qtd).length && params.todas !== "1") return;  // Equipamento: só peças com quantidade
       const t = r[cT];
       itens.push({
         grupo, descricao, codigo,
@@ -232,7 +247,106 @@ function doGet(e) {
         id: normNumberish(data[m1][K]), codigo9: normNumberish(data[m1][H]), codigoC: String(data[m1][L] || "").trim()
       });
     }
+    // Ajustes deste GT: o mais recente (linha mais abaixo) de cada ID de fábrica vence
+    lerAjustes_(ss).forEach(a => {
+      if (normNome_(a.gt) !== gt) return;
+      Object.keys(mapa).forEach(k => mapa[k].forEach(mc => {
+        if (normCod_(mc.id) === a.idAntigo && normCod_(mc.codigo9) === a.c9Antigo) {
+          mc.ajuste = { id: a.idNovo, codigo9: a.c9Novo, data: a.data, usuario: a.usuario, linha: a.linha };
+        }
+      }));
+    });
     return json({ ok:true, version: SCRIPT_VERSION, mapa });
+  }
+
+  // ---------- Ajuste de machine card ----------
+
+  // Onde um código 9 já é conhecido: MachineCards (GT → modelo, Código C) e ajustes anteriores (posição)
+  function conhecido_(c9) {
+    const modeloDe = {};
+    gtModelos_().forEach(x => { modeloDe[normNome_(x.gt)] = x.modelo; });
+    const lista = [], visto = {};
+    const add = o => {
+      const k = normNome_(o.modelo) + "|" + chaveCodigoC_(o.codigoC);
+      if (!visto[k]) { visto[k] = 1; lista.push(o); }
+    };
+    for (let i = 1; i < data.length; i++) {
+      if (normCod_(data[i][H]) !== c9) continue;
+      const gtI = String(data[i][M] || "").trim();
+      add({ modelo: modeloDe[normNome_(gtI)] || "", gt: gtI, codigoC: String(data[i][L] || "").trim(), origem: "machinecards" });
+    }
+    lerAjustes_(ss).forEach(a => {
+      if (a.c9Novo === c9) add({ modelo: a.modelo, gt: a.gt, codigoC: a.posicao, descricao: a.descricao, origem: "ajuste" });
+    });
+    return lista;
+  }
+
+  // A peça física (código 9 + ID) já existe na MachineCards ou num ajuste?
+  function pecaExiste_(c9, id) {
+    for (let i = 1; i < data.length; i++) {
+      if (normCod_(data[i][H]) === c9 && normCod_(data[i][K]) === id) {
+        return { origem: "machinecards", gt: String(data[i][M] || "").trim(), codigoC: String(data[i][L] || "").trim() };
+      }
+    }
+    const a = lerAjustes_(ss).filter(x => x.c9Novo === c9 && x.idNovo === id).pop();
+    return a ? { origem: "ajuste", gt: a.gt, codigoC: a.posicao, linha: a.linha } : null;
+  }
+
+  // mode=verificar_peca: chamado depois do Cadastro. Se não existe, diz onde o código 9 é conhecido.
+  if (mode === "verificar_peca") {
+    const c9 = normCod_(params.codigo9), id = normCod_(params.id);
+    if (!c9 || !id) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetros 'codigo9' e 'id' são obrigatórios" });
+    const ex = pecaExiste_(c9, id);
+    if (ex) return json({ ok:true, version: SCRIPT_VERSION, existe:true, ...ex });
+    return json({ ok:true, version: SCRIPT_VERSION, existe:false, conhecido: conhecido_(c9) });
+  }
+
+  // mode=gravar_ajuste: valida e acrescenta uma linha na aba AJUSTE
+  if (mode === "gravar_ajuste") {
+    const gtP = String(params.gt || "").trim(), posicao = String(params.posicao || "").trim();
+    const c9A = normCod_(params.c9_antigo), idA = normCod_(params.id_antigo);
+    const c9N = normCod_(params.c9_novo), idN = normCod_(params.id_novo);
+    if (!gtP || !posicao || !c9A || !idA || !c9N || !idN) {
+      return json({ ok:false, version: SCRIPT_VERSION, error:"Faltam dados do ajuste (GT, posição, IDs)" });
+    }
+    const modelo = (gtModelos_().find(x => normNome_(x.gt) === normNome_(gtP)) || {}).modelo || "";
+    if (!modelo) return json({ ok:false, version: SCRIPT_VERSION, error:`GT '${gtP}' não está na Validação` });
+
+    const ex = pecaExiste_(c9N, idN);
+    if (ex) return json({ ok:false, version: SCRIPT_VERSION, error:`A peça ${c9N} / ID ${idN} já existe (${ex.origem}, ${ex.gt}). Não precisa de ajuste.` });
+
+    let antigoOk = false;
+    for (let i = 1; i < data.length && !antigoOk; i++) {
+      antigoOk = normNome_(data[i][M]) === normNome_(gtP) && normCod_(data[i][H]) === c9A && normCod_(data[i][K]) === idA;
+    }
+    if (!antigoOk) return json({ ok:false, version: SCRIPT_VERSION, error:`O ID ${idA} (código 9 ${c9A}) não consta na MachineCards do ${gtP}` });
+
+    // Trava contra engano: código 9 conhecido só em OUTRO modelo de grua
+    const lista = conhecido_(c9N);
+    let alerta = "";
+    if (lista.length && !lista.some(x => normNome_(x.modelo) === normNome_(modelo))) {
+      const outros = [...new Set(lista.map(x => x.modelo || x.gt))].join(", ");
+      alerta = `Código 9 ${c9N} pertence a outro modelo (${outros}); ajuste em ${modelo}`;
+      if (String(params.confirmacao || "").trim().toUpperCase() !== "CONFIRMO") {
+        return json({ ok:false, version: SCRIPT_VERSION, precisaConfirmar:true, alerta });
+      }
+    }
+
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(LOCK_ESPERA_MS)) return json({ ok:false, version: SCRIPT_VERSION, error:"servidor ocupado, nada foi gravado; tente de novo" });
+    let linha;
+    try {
+      const sh = abaAjuste_(ss, true);
+      sh.appendRow([
+        Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm:ss"), usuario, gtP, modelo, posicao,
+        String(params.descricao || "").trim(), c9A, idA, c9N, idN, alerta, String(params.obs || "").trim()
+      ]);
+      SpreadsheetApp.flush();
+      linha = sh.getLastRow();
+    } finally {
+      lock.releaseLock();
+    }
+    return json({ ok:true, version: SCRIPT_VERSION, gravado:true, linha, alerta });
   }
 
   // mode=i_por_h (H->I)
@@ -295,6 +409,49 @@ function doGet(e) {
 function normNome_(v) {
   return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// Código 9 / ID para comparação: texto sem ".0" e sem zeros à esquerda
+function normCod_(v) {
+  return String(v == null ? "" : v).trim().replace(/\.0+$/, "").replace(/^0+(?=.)/, "");
+}
+
+// GT → modelo (aba Validação da RELAÇÃO, TAG na coluna C, modelo na D, a partir da linha 4)
+function gtModelos_() {
+  const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), "Validação");
+  const out = [];
+  if (!sh || sh.getLastRow() < 4) return out;
+  sh.getRange(4, 3, sh.getLastRow() - 3, 2).getValues().forEach(r => {
+    const gt = String(r[0] || "").trim();
+    if (gt) out.push({ gt, modelo: String(r[1] || "").trim() });
+  });
+  return out;
+}
+
+function abaAjuste_(ss, criar) {
+  let sh = ss.getSheetByName(AJUSTE_ABA);
+  if (!sh && criar) {
+    sh = ss.insertSheet(AJUSTE_ABA);
+    sh.getRange(1, 1, 1, AJUSTE_CAB.length).setValues([AJUSTE_CAB]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// Linhas da aba AJUSTE (ordem da planilha: a última de cada ID de fábrica é a vigente)
+function lerAjustes_(ss) {
+  const sh = abaAjuste_(ss, false);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, AJUSTE_CAB.length).getValues()
+    .map((r, i) => ({
+      linha: i + 2,
+      data: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, "yyyy-MM-dd HH:mm") : String(r[0] || ""),
+      usuario: String(r[1] || ""), gt: String(r[2] || "").trim(), modelo: String(r[3] || "").trim(),
+      posicao: String(r[4] || "").trim(), descricao: String(r[5] || "").trim(),
+      c9Antigo: normCod_(r[6]), idAntigo: normCod_(r[7]), c9Novo: normCod_(r[8]), idNovo: normCod_(r[9]),
+      alerta: String(r[10] || "").trim()
+    }))
+    .filter(a => a.gt && a.idAntigo && a.idNovo);
 }
 
 function abaPorNome_(ss, nome) {

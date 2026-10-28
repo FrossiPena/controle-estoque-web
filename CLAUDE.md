@@ -26,6 +26,11 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   C–F COMPATÍVEL 1..4, H CÓDIGO LBR, J COMPRIMENTO, K GT (vazio = vale para todas as unidades), L em diante
   comprimentos de lança ("75m", "36,7m"…; célula = quantidade). Linha sem código = título de grupo.
   As colunas são achadas pelo nome do cabeçalho. A coluna F alimenta fórmulas antigas de peso/preço (I3, AG3).
+- Aba `AJUSTE` (planilha do Consolidado, criada pelo script na primeira gravação): registro de peças que
+  substituíram um machine card de fábrica. Só se acrescentam linhas (nunca editar a MachineCards); o ajuste mais
+  recente de cada ID de fábrica vale. Colunas: DATAHORA | USUARIO | GT | MODELO | POSICAO (CODIGO C) | DESCRICAO |
+  CODIGO9 ANTIGO | ID ANTIGO | CODIGO9 NOVO | ID NOVO | ALERTA | OBS. Código 9 conhecido só em outro modelo
+  exige "CONFIRMO" e fica marcado em ALERTA.
 
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
