@@ -1,13 +1,13 @@
-<!-- index.html - v5.9.0 (Login + Consulta ítem em 5 seções + QR no Cadastro + sinal de comunicação + várias fotos ao registrar) -->
+<!-- index.html - v5.10.0 (Login + Consulta ítem + Cadastro + Inventário + Equipamento: lanças e tirantes por grua/GT/lança) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.9.0" />
+  <meta name="app-version" content="v5.10.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.9.0" />
+  <link rel="stylesheet" href="style.css?v=5.10.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -43,7 +43,8 @@
       <button type="button" data-screen="consulta" class="active">1) Consulta ítem</button>
       <button type="button" data-screen="cadastro">2) Cadastro</button>
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
-      <button type="button" data-screen="debug">4) Debug</button>
+      <button type="button" data-screen="equipamento">4) Equipamento</button>
+      <button type="button" data-screen="debug">5) Debug</button>
     </nav>
 
     <div class="sidebar-footer">
@@ -305,7 +306,28 @@
       </div>
     </section>
 
-    <!-- 4) Debug -->
+    <!-- 4) Equipamento -->
+    <section class="frame" id="screen-equipamento" hidden>
+      <h2>Equipamento</h2>
+      <p class="secao-info">
+        Escolha a grua, o GT e o comprimento de lança para ver as lanças e tirantes necessários,
+        com os machine cards daquele GT.
+      </p>
+
+      <label class="campo-label" for="eq-grua">Grua</label>
+      <select id="eq-grua" disabled><option value="">Carregando…</option></select>
+
+      <label class="campo-label" for="eq-gt">GT</label>
+      <select id="eq-gt" disabled><option value="">Escolha a grua</option></select>
+
+      <label class="campo-label" for="eq-lanca">Comprimento de lança</label>
+      <select id="eq-lanca" disabled><option value="">Escolha a grua</option></select>
+
+      <p id="eq-status" class="secao-info"></p>
+      <div id="eq-lista" class="eq-lista"></div>
+    </section>
+
+    <!-- 5) Debug -->
     <section class="frame" id="screen-debug" hidden>
       <h2>Debug</h2>
 
@@ -340,7 +362,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.9.0"></script>
+  <script src="app.js?v=5.10.0"></script>
 </body>
 </html>
 

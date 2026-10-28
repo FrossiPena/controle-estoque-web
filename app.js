@@ -1,3 +1,5 @@
+// v5.10.0 - Tela 4) Equipamento: grua → GT → lança → lanças e tirantes com machine cards do GT
+//         (Debug passa a ser 5)
 // v5.9.0 - Registrar trava até terminar registro + fotos; ciclo de até 4 fotos após registrar
 //        - Tempo limite: 30s registro, 60s por foto; contagem no sinal do topo e "tempo esgotado" em amarelo
 // v5.8.2 - Rodapé com a versão em execução; avisa se index.html e app.js estão em versões diferentes
@@ -15,7 +17,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.9.0";
+const APP_VERSION = "v5.10.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -68,6 +70,7 @@ function showScreen(key) {
     consulta: { id: "screen-consulta", name: "Consulta ítem" },
     cadastro: { id: "screen-cadastro", name: "Cadastro" },
     inventario: { id: "screen-inventario", name: "Consultar Inventário" },
+    equipamento: { id: "screen-equipamento", name: "Equipamento" },
     debug: { id: "screen-debug", name: "Debug" },
   };
 
@@ -87,6 +90,7 @@ function showScreen(key) {
   setScreenName(map[key]?.name || "");
 
   if (key === "cadastro" && AUTH.user) carregarUltimoNumInv();
+  if (key === "equipamento" && AUTH.user && !EQ.gruasCarregadas) carregarGruasEq();
 }
 
 /* =========================
@@ -380,6 +384,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // Tela padrão
   showScreen("consulta");
+
+  // Equipamento
+  document.getElementById("eq-grua")?.addEventListener("change", onGruaEq);
+  document.getElementById("eq-gt")?.addEventListener("change", onGtEq);
+  document.getElementById("eq-lanca")?.addEventListener("change", renderListaEq);
 
   // Login
   document.getElementById("login-form")?.addEventListener("submit", fazerLogin);
@@ -823,6 +832,204 @@ function consultarDados() {
 /* =========================
    ÚLTIMO INVENTÁRIO (Código 9 + Código individual)
 ========================= */
+
+/* =========================
+   EQUIPAMENTO: grua → GT → comprimento de lança → lanças e tirantes (+ machine cards do GT)
+========================= */
+
+const EQ = {
+  gruasCarregadas: false,
+  lancasPorGrua: {},   // grua -> resposta de lancas_grua
+  mcPorGt: {},         // GT -> mapa Código C -> [{id, codigo9, codigoC}]
+  seq: 0               // descarta respostas de uma seleção anterior
+};
+
+function eqNorm(v) {
+  return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// Código C só com letras/dígitos, sem sufixo (mesma regra do Apps Script)
+function eqChaveC(v) {
+  const d = String(v == null ? "" : v).toUpperCase().replace(/[^0-9A-Z]/g, "");
+  const m = d.match(/^C\d{12}/);
+  return m ? m[0] : "";
+}
+
+function eqSelect(id, opcoes, placeholder) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.replaceChildren();
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = placeholder;
+  sel.appendChild(ph);
+  opcoes.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = v; sel.appendChild(o); });
+  sel.disabled = !opcoes.length;
+}
+
+function eqStatus(msg) {
+  const el = document.getElementById("eq-status");
+  if (el) el.textContent = msg || "";
+}
+
+async function eqGetJson(url) {
+  const raw = await apiGet(url);
+  logDebug("Resposta Equipamento raw: " + raw.slice(0, 500));
+  let j = null; try { j = JSON.parse(raw); } catch {}
+  return j;
+}
+
+async function carregarGruasEq() {
+  eqSelect("eq-grua", [], "Carregando…");
+  eqStatus("");
+  try {
+    const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=gruas_lista&t=${Date.now()}`);
+    if (!(j && j.ok && Array.isArray(j.gruas))) throw new Error(j && j.error || "resposta inválida");
+    eqSelect("eq-grua", j.gruas, "Selecione a grua…");
+    EQ.gruasCarregadas = true;
+  } catch (err) {
+    logDebug("Erro gruas_lista: " + err);
+    eqSelect("eq-grua", [], "Erro ao carregar");
+    eqStatus("Não foi possível carregar a lista de gruas (ver Debug). Abra a tela de novo para tentar.");
+  }
+}
+
+async function onGruaEq() {
+  const grua = document.getElementById("eq-grua")?.value || "";
+  const seq = ++EQ.seq;
+  eqSelect("eq-gt", [], grua ? "Carregando…" : "Escolha a grua");
+  eqSelect("eq-lanca", [], grua ? "Carregando…" : "Escolha a grua");
+  document.getElementById("eq-lista")?.replaceChildren();
+  eqStatus("");
+  if (!grua) return;
+
+  try {
+    const [jGt, jL] = await Promise.all([
+      eqGetJson(`${ENDPOINT_CONSULTA}?mode=gts_por_grua&grua=${encodeURIComponent(grua)}&t=${Date.now()}`),
+      EQ.lancasPorGrua[grua]
+        ? Promise.resolve(EQ.lancasPorGrua[grua])
+        : eqGetJson(`${ENDPOINT_CONSULTA}?mode=lancas_grua&grua=${encodeURIComponent(grua)}&t=${Date.now()}`)
+    ]);
+    if (seq !== EQ.seq) return;
+    if (!(jGt && jGt.ok) || !(jL && jL.ok)) throw new Error((jGt && jGt.error) || (jL && jL.error) || "resposta inválida");
+    EQ.lancasPorGrua[grua] = jL;
+
+    const gts = jGt.gts || [];
+    eqSelect("eq-gt", gts, gts.length ? "Selecione o GT…" : "Nenhum GT na Validação");
+    eqSelect("eq-lanca", jL.lancas || [], (jL.lancas || []).length ? "Selecione o comprimento…" : "Sem dados de lança");
+
+    const avisos = [];
+    if (!jL.encontrado) avisos.push(`Sem dados de lança para "${grua}" (a planilha Lanças e tirantes não tem aba com esse nome).`);
+    if (!gts.length) avisos.push(`Nenhum GT cadastrado para "${grua}" na aba Validação.`);
+    eqStatus(avisos.join(" "));
+
+    if (gts.length === 1) {               // só um GT: já seleciona
+      document.getElementById("eq-gt").value = gts[0];
+      onGtEq();
+    }
+  } catch (err) {
+    if (seq !== EQ.seq) return;
+    logDebug("Erro Equipamento (grua): " + err);
+    eqSelect("eq-gt", [], "Erro ao carregar");
+    eqSelect("eq-lanca", [], "Erro ao carregar");
+    eqStatus("Erro ao carregar os dados da grua (ver Debug).");
+  }
+}
+
+async function onGtEq() {
+  const gt = document.getElementById("eq-gt")?.value || "";
+  if (!gt || EQ.mcPorGt[gt]) { renderListaEq(); return; }
+  const seq = EQ.seq;
+  eqStatus(`Buscando machine cards do ${gt}…`);
+  try {
+    const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=machinecards_por_gt&gt=${encodeURIComponent(gt)}&t=${Date.now()}`);
+    if (!(j && j.ok)) throw new Error(j && j.error || "resposta inválida");
+    EQ.mcPorGt[gt] = j.mapa || {};
+    if (seq !== EQ.seq) return;
+    eqStatus("");
+  } catch (err) {
+    logDebug("Erro machinecards_por_gt: " + err);
+    eqStatus(`Não foi possível buscar os machine cards do ${gt} (ver Debug). A lista sai sem IDs.`);
+  }
+  renderListaEq();
+}
+
+// Monta a lista: peças com quantidade no comprimento escolhido, GT vazio ou = GT escolhido
+function renderListaEq() {
+  const ul = document.getElementById("eq-lista");
+  if (!ul) return;
+  ul.replaceChildren();
+
+  const grua = document.getElementById("eq-grua")?.value || "";
+  const gt = document.getElementById("eq-gt")?.value || "";
+  const lanca = document.getElementById("eq-lanca")?.value || "";
+  const dados = EQ.lancasPorGrua[grua];
+  if (!grua || !gt || !lanca || !dados) return;
+
+  const itens = (dados.itens || []).filter(it => it.qtd && it.qtd[lanca] > 0 && (!it.gt || eqNorm(it.gt) === eqNorm(gt)));
+  const mapa = EQ.mcPorGt[gt] || null;
+
+  const titulo = document.createElement("p");
+  titulo.className = "lista-inv-titulo";
+  titulo.textContent = `${grua} · ${gt} · ${lanca}: ${itens.length} itens`;
+  ul.appendChild(titulo);
+
+  let grupoAtual = null;
+  itens.forEach(it => {
+    if (it.grupo !== grupoAtual) {
+      grupoAtual = it.grupo;
+      const h = document.createElement("h3");
+      h.className = "eq-grupo";
+      h.textContent = grupoAtual || "Outros";
+      ul.appendChild(h);
+    }
+    const qtd = it.qtd[lanca];
+    const card = document.createElement("div");
+    card.className = "eq-item";
+
+    const t = document.createElement("div");
+    t.className = "eq-item-titulo";
+    t.textContent = `${it.descricao}${qtd > 1 ? `  ×${qtd}` : ""}${it.tamanho ? ` · ${it.tamanho}` : ""}`;
+    card.appendChild(t);
+
+    const c = document.createElement("div");
+    c.className = "eq-item-codigo";
+    c.textContent = it.codigo + (it.compat && it.compat.length ? `  (compatível: ${it.compat.join(", ")})` : "");
+    card.appendChild(c);
+
+    const ids = document.createElement("div");
+    ids.className = "eq-item-ids";
+    if (!mapa) {
+      ids.textContent = "Machine card: —";
+    } else {
+      // IDs do próprio código; depois dos compatíveis
+      const achados = [];
+      [it.codigo].concat(it.compat || []).forEach((cod, i) => {
+        (mapa[eqChaveC(cod)] || []).forEach(mc => achados.push({ id: mc.id, compat: i > 0 ? cod : "" }));
+      });
+      if (!achados.length) {
+        const a = document.createElement("span");
+        a.className = "eq-aviso";
+        a.textContent = `Sem machine card no ${gt}`;
+        ids.appendChild(a);
+      } else {
+        achados.forEach((mc, i) => {
+          if (i) ids.appendChild(document.createTextNode("  "));
+          ids.appendChild(document.createTextNode("[ID = "));
+          const b = document.createElement("b"); b.textContent = mc.id; ids.appendChild(b);
+          ids.appendChild(document.createTextNode("]" + (mc.compat ? ` (compatível ${mc.compat})` : "")));
+        });
+        if (achados.length < qtd) {
+          const a = document.createElement("span");
+          a.className = "eq-aviso";
+          a.textContent = `  faltam ${qtd - achados.length}`;
+          ids.appendChild(a);
+        }
+      }
+    }
+    card.appendChild(ids);
+    ul.appendChild(card);
+  });
+}
 
 /* =========================
    DADOS COMPLETOS: todas as ocorrências de inventário do Código 9

@@ -20,6 +20,10 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   que muda a URL). Confira depois com `…/exec?mode=diag`.
 - Implantações usadas pelo app: inventário `AKfycbxClcs2…`, consolidado `AKfycbxE5uwm…`.
 - Toda chamada (exceto `diag`) exige `user`/`pass` validados contra a propriedade `USUARIOS`.
+- Planilhas lidas pelo script do Consolidado: aba `MachineCards Consolidado` (própria), RELAÇÃO DE PRODUTOS
+  (`RELACAO_SHEET_ID`: abas de peças por grua, `Gruas lista`, `Validação`) e "Lanças e tirantes"
+  (`LANCAS_SHEET_ID`: uma aba por grua, cabeçalho na linha 3 — GRUPO | DESCRIÇÃO | CÓDIGO | TAMANHO | GT |
+  COMPATÍVEL 1..5 | comprimentos "75m"…; célula = quantidade; GT vazio = vale para todas as unidades).
 
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
