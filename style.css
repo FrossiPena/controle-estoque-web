@@ -1,4 +1,4 @@
-/* style_v5.10.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.11.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -395,5 +395,18 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .eq-item-titulo{ font-weight: 700; }
 .eq-item-codigo{ font-family: Consolas, monospace; }
 .eq-item-ids{ margin-top: 2px; }
-.eq-item-ids b{ font-family: Consolas, monospace; }
+.eq-item-ids{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .eq-aviso{ color: #b45309; font-weight: 700; }
+
+/* Equipamento: conferência por inventário */
+.eq-inv{ border: 1px solid #ccc; border-radius: 8px; margin: 4px 0 2px; background: #fff; }
+.eq-inv summary{ padding: 10px; cursor: pointer; font-size: 14px; }
+.eq-inv-opcoes{ max-height: 220px; overflow-y: auto; padding: 0 10px 8px; display: flex; flex-direction: column; gap: 4px; }
+.eq-inv-opcao{ display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+.eq-inv-opcao input{ width: auto; margin: 0; transform: scale(1.2); }
+.eq-id{ font-family: Consolas, monospace; font-size: 13px; padding: 3px 8px; border-radius: 6px; background: #e5e7eb; }
+.eq-id-ok{ background: #16a34a; color: #fff; border: 0; cursor: pointer; }
+.eq-id-ok:active{ background: #15803d; }
+.eq-id-falta{ background: #dc2626; color: #fff; }
+.eq-item-ok{ border-left: 6px solid #16a34a; }
+.eq-item-falta{ border-left: 6px solid #dc2626; }

@@ -1,4 +1,4 @@
-// v5.7-inv - Inventário: A..N
+// v5.8-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
 // I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
@@ -7,9 +7,10 @@
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
 // lista_inv: todas as linhas com campo1 (qualquer campo2), mais recente primeiro
 // ultimo_numinv: último valor preenchido da coluna H (NumInv), de baixo para cima
+// inv_resumo: números de inventário (H) existentes + mapa "código9|individual" -> {NumInv: linha mais recente}
 // log_mov: grava sob LockService (fila de até LOCK_ESPERA_MS) para cada registro receber a própria linha
 
-const SCRIPT_VERSION = "v5.7-inv";
+const SCRIPT_VERSION = "v5.8-inv";
 const LOCK_ESPERA_MS = 10000; // espera máxima pela vez de gravar; depois responde "servidor ocupado"
 const LISTA_MAX = 200; // limite de itens do lista_inv
 const NCOLS = 14; // A..N
@@ -153,6 +154,27 @@ function doGet(e) {
       }
 
       return json_({ ok:true, version: SCRIPT_VERSION, itens, total, truncado: total > itens.length });
+    }
+
+    if (mode === "inv_resumo") {
+      const sh = getSheet_();
+      const last = sh.getLastRow();
+      if (last < 2) return json_({ ok:true, version: SCRIPT_VERSION, numinvs:[], chaves:{} });
+
+      const vals = sh.getRange(2, 1, last - 1, 8).getValues(); // A..H
+      const contagem = {}, chaves = {};
+      vals.forEach((v, i) => {
+        if (String(v[0] || "").trim() === "") return;            // linha limpa
+        const n = String(v[7] == null ? "" : v[7]).trim();
+        if (!n) return;                                         // sem número de inventário
+        contagem[n] = (contagem[n] || 0) + 1;
+        const k = normCodigo_(v[0]) + "|" + normCodigo_(v[1]);
+        (chaves[k] = chaves[k] || {})[n] = i + 2;               // de cima para baixo: fica a linha mais recente
+      });
+      const numinvs = Object.keys(contagem)
+        .sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b))
+        .map(n => ({ numInv: n, registros: contagem[n] }));
+      return json_({ ok:true, version: SCRIPT_VERSION, numinvs, chaves });
     }
 
     if (mode === "ultimo_numinv") {

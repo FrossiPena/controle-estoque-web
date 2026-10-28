@@ -1,3 +1,5 @@
+// v5.11.0 - Equipamento: conferência por inventário (várias seleções); ID verde = inventariado
+//          (toque abre a Consulta ítem já consultada), vermelho = não inventariado
 // v5.10.0 - Tela 4) Equipamento: grua → GT → lança → lanças e tirantes com machine cards do GT
 //         (Debug passa a ser 5)
 // v5.9.0 - Registrar trava até terminar registro + fotos; ciclo de até 4 fotos após registrar
@@ -17,7 +19,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.10.0";
+const APP_VERSION = "v5.11.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -90,7 +92,10 @@ function showScreen(key) {
   setScreenName(map[key]?.name || "");
 
   if (key === "cadastro" && AUTH.user) carregarUltimoNumInv();
-  if (key === "equipamento" && AUTH.user && !EQ.gruasCarregadas) carregarGruasEq();
+  if (key === "equipamento" && AUTH.user) {
+    if (!EQ.gruasCarregadas) carregarGruasEq();
+    carregarInventariosEq(); // sempre atualiza: pode ter havido registro novo
+  }
 }
 
 /* =========================
@@ -841,6 +846,8 @@ const EQ = {
   gruasCarregadas: false,
   lancasPorGrua: {},   // grua -> resposta de lancas_grua
   mcPorGt: {},         // GT -> mapa Código C -> [{id, codigo9, codigoC}]
+  inv: null,           // resposta de inv_resumo (planilha de inventário)
+  invSel: new Set(),   // NumInv marcados para conferir
   seq: 0               // descarta respostas de uma seleção anterior
 };
 
@@ -891,6 +898,77 @@ async function carregarGruasEq() {
     eqSelect("eq-grua", [], "Erro ao carregar");
     eqStatus("Não foi possível carregar a lista de gruas (ver Debug). Abra a tela de novo para tentar.");
   }
+}
+
+async function carregarInventariosEq() {
+  const resumo = document.getElementById("eq-inv-resumo");
+  if (resumo && !EQ.inv) resumo.textContent = "Carregando…";
+  try {
+    const j = await eqGetJson(`${ENDPOINT_REGISTRO}?mode=inv_resumo&t=${Date.now()}`);
+    if (!(j && j.ok && Array.isArray(j.numinvs))) throw new Error(j && j.error || "resposta inválida");
+    EQ.inv = j;
+    // mantém só seleções que ainda existem
+    const existentes = new Set(j.numinvs.map(n => n.numInv));
+    EQ.invSel.forEach(n => { if (!existentes.has(n)) EQ.invSel.delete(n); });
+    renderOpcoesInvEq();
+    renderListaEq();
+  } catch (err) {
+    logDebug("Erro inv_resumo: " + err);
+    if (resumo) resumo.textContent = "Erro ao carregar os inventários (ver Debug)";
+  }
+}
+
+function renderOpcoesInvEq() {
+  const box = document.getElementById("eq-inv-opcoes");
+  const resumo = document.getElementById("eq-inv-resumo");
+  if (!box || !EQ.inv) return;
+  box.replaceChildren();
+  if (!EQ.inv.numinvs.length) {
+    box.textContent = "Nenhum número de inventário na planilha.";
+  }
+  EQ.inv.numinvs.forEach(({ numInv, registros }) => {
+    const lab = document.createElement("label");
+    lab.className = "eq-inv-opcao";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = numInv; cb.checked = EQ.invSel.has(numInv);
+    cb.addEventListener("change", () => {
+      if (cb.checked) EQ.invSel.add(numInv); else EQ.invSel.delete(numInv);
+      atualizarResumoInvEq();
+      renderListaEq();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(` Inventário ${numInv} (${registros} registros)`));
+    box.appendChild(lab);
+  });
+  atualizarResumoInvEq();
+}
+
+function atualizarResumoInvEq() {
+  const resumo = document.getElementById("eq-inv-resumo");
+  if (!resumo) return;
+  const sel = [...EQ.invSel].sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
+  resumo.textContent = sel.length ? `Inventário ${sel.join(", ")}` : "Nenhum selecionado (toque para escolher)";
+}
+
+// Linhas de inventário (NumInv marcados) para o par Código 9 + código individual
+function inventariadoEq(codigo9, id) {
+  if (!EQ.inv || !EQ.invSel.size) return null;
+  const regs = EQ.inv.chaves[`${semZeros(codigo9)}|${semZeros(id)}`] || {};
+  const achados = [...EQ.invSel].filter(n => regs[n]).map(n => ({ numInv: n, row: regs[n] }));
+  return achados;
+}
+
+// Abre a Consulta ítem com Código 9 + código individual e já consulta
+function abrirConsultaPecaEq(codigo9, id) {
+  showScreen("consulta");
+  document.getElementById("campo1").value = String(codigo9);
+  document.getElementById("campo2").value = String(id);
+  const cc = document.getElementById("codigo-c-input");
+  if (cc) cc.value = "";
+  syncCampo1ToCadastro();
+  syncCampo2ToCadastro();
+  window.scrollTo(0, 0);
+  consultarDados();
 }
 
 async function onGruaEq() {
@@ -970,8 +1048,9 @@ function renderListaEq() {
 
   const titulo = document.createElement("p");
   titulo.className = "lista-inv-titulo";
-  titulo.textContent = `${grua} · ${gt} · ${lanca}: ${itens.length} itens`;
   ul.appendChild(titulo);
+  const conferindo = !!(mapa && EQ.inv && EQ.invSel.size);
+  let idsTotal = 0, idsOk = 0;
 
   let grupoAtual = null;
   itens.forEach(it => {
@@ -998,13 +1077,14 @@ function renderListaEq() {
 
     const ids = document.createElement("div");
     ids.className = "eq-item-ids";
+    let okNoItem = 0, totalNoItem = 0;
     if (!mapa) {
       ids.textContent = "Machine card: —";
     } else {
       // IDs do próprio código; depois dos compatíveis
       const achados = [];
       [it.codigo].concat(it.compat || []).forEach((cod, i) => {
-        (mapa[eqChaveC(cod)] || []).forEach(mc => achados.push({ id: mc.id, compat: i > 0 ? cod : "" }));
+        (mapa[eqChaveC(cod)] || []).forEach(mc => achados.push({ id: mc.id, codigo9: mc.codigo9, compat: i > 0 ? cod : "" }));
       });
       if (!achados.length) {
         const a = document.createElement("span");
@@ -1012,23 +1092,41 @@ function renderListaEq() {
         a.textContent = `Sem machine card no ${gt}`;
         ids.appendChild(a);
       } else {
-        achados.forEach((mc, i) => {
-          if (i) ids.appendChild(document.createTextNode("  "));
-          ids.appendChild(document.createTextNode("[ID = "));
-          const b = document.createElement("b"); b.textContent = mc.id; ids.appendChild(b);
-          ids.appendChild(document.createTextNode("]" + (mc.compat ? ` (compatível ${mc.compat})` : "")));
+        achados.forEach(mc => {
+          const inv = inventariadoEq(mc.codigo9, mc.id);   // null = sem conferência
+          const chip = document.createElement(inv && inv.length ? "button" : "span");
+          chip.className = "eq-id" + (inv === null ? "" : (inv.length ? " eq-id-ok" : " eq-id-falta"));
+          chip.textContent = `[ID = ${mc.id}]` + (mc.compat ? ` (compatível ${mc.compat})` : "");
+          if (inv && inv.length) {
+            chip.type = "button";
+            chip.title = "Inventariado: " + inv.map(x => `inv. ${x.numInv} (linha ${x.row})`).join(", ") + ". Toque para consultar.";
+            chip.addEventListener("click", () => abrirConsultaPecaEq(mc.codigo9, mc.id));
+            okNoItem++;
+          } else if (inv) {
+            chip.title = "Sem registro nos inventários selecionados";
+          }
+          totalNoItem++;
+          ids.appendChild(chip);
         });
         if (achados.length < qtd) {
           const a = document.createElement("span");
           a.className = "eq-aviso";
-          a.textContent = `  faltam ${qtd - achados.length}`;
+          a.textContent = `faltam ${qtd - achados.length}`;
           ids.appendChild(a);
         }
       }
+      if (conferindo) {
+        const completo = totalNoItem > 0 && okNoItem === totalNoItem && totalNoItem >= qtd;
+        card.classList.add(completo ? "eq-item-ok" : "eq-item-falta");
+      }
     }
+    idsTotal += Math.max(totalNoItem, qtd); idsOk += okNoItem;
     card.appendChild(ids);
     ul.appendChild(card);
   });
+
+  titulo.textContent = `${grua} · ${gt} · ${lanca}: ${itens.length} itens` +
+    (conferindo ? ` · inventariados ${idsOk} de ${idsTotal} peças` : "");
 }
 
 /* =========================
