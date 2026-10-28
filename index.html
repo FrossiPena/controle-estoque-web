@@ -1,13 +1,13 @@
-<!-- index.html - v5.10.0 (Login + Consulta ítem + Cadastro + Inventário + Equipamento: lanças e tirantes por grua/GT/lança) -->
+<!-- index.html - v5.11.0 (Login + Consulta ítem + Cadastro + Inventário + Equipamento com conferência por inventário) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.10.0" />
+  <meta name="app-version" content="v5.11.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.10.0" />
+  <link rel="stylesheet" href="style.css?v=5.11.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -323,6 +323,13 @@
       <label class="campo-label" for="eq-lanca">Comprimento de lança</label>
       <select id="eq-lanca" disabled><option value="">Escolha a grua</option></select>
 
+      <label class="campo-label">Conferir inventário(s)</label>
+      <details class="eq-inv" id="eq-inv">
+        <summary id="eq-inv-resumo">Carregando…</summary>
+        <div class="eq-inv-opcoes" id="eq-inv-opcoes"></div>
+      </details>
+      <p class="secao-info">Verde = peça inventariada (toque para consultar) · vermelho = sem registro nos inventários marcados.</p>
+
       <p id="eq-status" class="secao-info"></p>
       <div id="eq-lista" class="eq-lista"></div>
     </section>
@@ -362,7 +369,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.10.0"></script>
+  <script src="app.js?v=5.11.0"></script>
 </body>
 </html>
 
