@@ -1,6 +1,7 @@
-// v4.3 - Consolidado WebApp
-// Tela Equipamento: gruas_lista, gts_por_grua (RELAÇÃO), lancas_grua (planilha "Lanças e tirantes"),
-//                   machinecards_por_gt (MachineCards: Código C -> código individual do GT)
+// v4.4 - Consolidado WebApp
+// lancas_grua passa a ler a própria RELAÇÃO (aba do modelo): cabeçalho na linha 2, COMPATÍVEL 1..4 em C–F,
+//            GT em K, comprimentos de lança ("75m"…) a partir de L; grupo = linha de seção (ex.: "LANÇA")
+// v4.3 - Tela Equipamento: gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 // v4.2
 // patrimonio_por_h: mapa Código individual (K) -> Patrimônio (M) para um Código 9 (H)
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
@@ -9,9 +10,8 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.3";
+const SCRIPT_VERSION = "v4.4";
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
-const LANCAS_SHEET_ID  = "1emce7FIl5bnIu7XBIsuWuH0FRVrr1czlO1IuQkYwcFA"; // "Lanças e tirantes" (uma aba por grua)
 
 function doGet(e) {
   const params = (e && e.parameter) ? e.parameter : {};
@@ -58,37 +58,42 @@ function doGet(e) {
     return json({ ok:true, version: SCRIPT_VERSION, gts });
   }
 
-  // mode=lancas_grua: aba da grua na planilha "Lanças e tirantes" (cabeçalho na linha 3).
-  // Colunas achadas pelo nome do cabeçalho; comprimentos = cabeçalhos tipo "75m" / "36,7m".
+  // mode=lancas_grua: aba do modelo na RELAÇÃO. Cabeçalho na linha 2; colunas achadas pelo nome:
+  // DESCRIÇÃO, CÓDIGO LBR, COMPRIMENTO, GT, COMPATÍVEL n e comprimentos de lança ("75m" / "36,7m").
+  // Célula de comprimento = quantidade. Linha sem código (ex.: "LANÇA") = título de grupo.
   if (mode === "lancas_grua") {
     const grua = String(params.grua || "").trim();
     if (!grua) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetro 'grua' ausente" });
-    const sh = abaPorNome_(SpreadsheetApp.openById(LANCAS_SHEET_ID), grua);
+    const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), grua);
     if (!sh) return json({ ok:true, version: SCRIPT_VERSION, encontrado:false, lancas:[], itens:[] });
 
     const lastR = sh.getLastRow(), lastC = sh.getLastColumn();
     if (lastR < 3) return json({ ok:true, version: SCRIPT_VERSION, encontrado:true, aba: sh.getName(), lancas:[], itens:[] });
-    const vals = sh.getRange(3, 1, lastR - 2, lastC).getValues();
+    const vals = sh.getRange(2, 1, lastR - 1, lastC).getValues();
     const cab = vals[0].map(v => String(v == null ? "" : v).trim());
     const col = nome => cab.findIndex(h => normNome_(h) === normNome_(nome));
-    const cG = col("GRUPO"), cD = col("DESCRIÇÃO"), cC = col("CÓDIGO"), cT = col("TAMANHO"), cGT = col("GT");
+    const cD = col("DESCRIÇÃO"), cC = col("CÓDIGO LBR"), cT = col("COMPRIMENTO"), cGT = col("GT");
     const cCompat = [], cLanca = [];
     cab.forEach((h, i) => {
       if (/^compat/i.test(normNome_(h))) cCompat.push(i);
       else if (/^\d+([.,]\d+)?\s*m$/i.test(h)) cLanca.push(i);
     });
-    if (cC < 0) return json({ ok:false, version: SCRIPT_VERSION, error:`Aba '${sh.getName()}': coluna CÓDIGO não encontrada na linha 3` });
+    if (cC < 0 || cD < 0) return json({ ok:false, version: SCRIPT_VERSION, error:`Aba '${sh.getName()}': colunas DESCRIÇÃO/CÓDIGO LBR não encontradas na linha 2` });
 
     const txt = (r, i) => i < 0 ? "" : String(r[i] == null ? "" : r[i]).trim();
     const itens = [];
-    vals.slice(1).forEach(r => {
-      const codigo = txt(r, cC);
-      if (!codigo) return;
+    let grupo = "";
+    vals.slice(2).forEach(r => {            // linha 3 = a grua inteira; peças a partir da 4
+      const codigo = txt(r, cC), descricao = txt(r, cD);
+      if (!/[0-9a-z]/i.test(codigo)) { if (descricao) grupo = descricao; return; } // sem código (ou "-") = título de grupo
       const qtd = {};
       cLanca.forEach(i => { const q = Number(r[i]); if (q > 0) qtd[cab[i]] = q; });
+      if (!Object.keys(qtd).length) return;  // a tela só usa peças com quantidade em algum comprimento
+      const t = r[cT];
       itens.push({
-        grupo: txt(r, cG), descricao: txt(r, cD), codigo, tamanho: txt(r, cT), gt: txt(r, cGT),
-        compat: cCompat.map(i => txt(r, i)).filter(Boolean), qtd
+        grupo, descricao, codigo,
+        tamanho: (t === "" || t == null) ? "" : (typeof t === "number" ? String(t).replace(".", ",") + " m" : String(t).trim()),
+        gt: txt(r, cGT), compat: cCompat.map(i => txt(r, i)).filter(Boolean), qtd
       });
     });
     return json({ ok:true, version: SCRIPT_VERSION, encontrado:true, aba: sh.getName(), lancas: cLanca.map(i => cab[i]), itens });
