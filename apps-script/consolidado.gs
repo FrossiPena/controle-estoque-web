@@ -1,12 +1,17 @@
-// v4.2 - Consolidado WebApp
+// v4.3 - Consolidado WebApp
+// Tela Equipamento: gruas_lista, gts_por_grua (RELAÇÃO), lancas_grua (planilha "Lanças e tirantes"),
+//                   machinecards_por_gt (MachineCards: Código C -> código individual do GT)
+// v4.2
 // patrimonio_por_h: mapa Código individual (K) -> Patrimônio (M) para um Código 9 (H)
 // Login: toda chamada (exceto diag) exige user + pass válidos na propriedade USUARIOS
 //        (Configurações do projeto > Propriedades do script), formato: nome:senha, um por linha
 // FIX: adiciona mode=h_por_l (L->H) com formatação Código C e respostas com version
-// Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l
+// Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
+//        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.2";
+const SCRIPT_VERSION = "v4.3";
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
+const LANCAS_SHEET_ID  = "1emce7FIl5bnIu7XBIsuWuH0FRVrr1czlO1IuQkYwcFA"; // "Lanças e tirantes" (uma aba por grua)
 
 function doGet(e) {
   const params = (e && e.parameter) ? e.parameter : {};
@@ -22,6 +27,71 @@ function doGet(e) {
 
   if (mode === "login") {
     return json({ ok:true, version: SCRIPT_VERSION, user: usuario });
+  }
+
+  // ---------- Tela Equipamento (não usam a MachineCards) ----------
+
+  // mode=gruas_lista: modelos da aba "Gruas lista" (coluna D, a partir da linha 4)
+  if (mode === "gruas_lista") {
+    const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), "Gruas lista");
+    if (!sh) return json({ ok:false, version: SCRIPT_VERSION, error:"Aba 'Gruas lista' não encontrada na RELAÇÃO" });
+    const last = sh.getLastRow();
+    const gruas = last < 4 ? [] : sh.getRange(4, 4, last - 3, 1).getValues()
+      .map(r => String(r[0] || "").trim()).filter(Boolean);
+    return json({ ok:true, version: SCRIPT_VERSION, gruas });
+  }
+
+  // mode=gts_por_grua: TAGs (coluna C) da aba "Validação" onde o Modelo (coluna D) = grua
+  if (mode === "gts_por_grua") {
+    const grua = String(params.grua || "").trim();
+    if (!grua) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetro 'grua' ausente" });
+    const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), "Validação");
+    if (!sh) return json({ ok:false, version: SCRIPT_VERSION, error:"Aba 'Validação' não encontrada na RELAÇÃO" });
+    const last = sh.getLastRow();
+    const alvo = normNome_(grua), gts = [];
+    if (last >= 4) {
+      sh.getRange(4, 3, last - 3, 2).getValues().forEach(r => {
+        const gt = String(r[0] || "").trim();
+        if (gt && normNome_(r[1]) === alvo && gts.indexOf(gt) < 0) gts.push(gt);
+      });
+    }
+    return json({ ok:true, version: SCRIPT_VERSION, gts });
+  }
+
+  // mode=lancas_grua: aba da grua na planilha "Lanças e tirantes" (cabeçalho na linha 3).
+  // Colunas achadas pelo nome do cabeçalho; comprimentos = cabeçalhos tipo "75m" / "36,7m".
+  if (mode === "lancas_grua") {
+    const grua = String(params.grua || "").trim();
+    if (!grua) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetro 'grua' ausente" });
+    const sh = abaPorNome_(SpreadsheetApp.openById(LANCAS_SHEET_ID), grua);
+    if (!sh) return json({ ok:true, version: SCRIPT_VERSION, encontrado:false, lancas:[], itens:[] });
+
+    const lastR = sh.getLastRow(), lastC = sh.getLastColumn();
+    if (lastR < 3) return json({ ok:true, version: SCRIPT_VERSION, encontrado:true, aba: sh.getName(), lancas:[], itens:[] });
+    const vals = sh.getRange(3, 1, lastR - 2, lastC).getValues();
+    const cab = vals[0].map(v => String(v == null ? "" : v).trim());
+    const col = nome => cab.findIndex(h => normNome_(h) === normNome_(nome));
+    const cG = col("GRUPO"), cD = col("DESCRIÇÃO"), cC = col("CÓDIGO"), cT = col("TAMANHO"), cGT = col("GT");
+    const cCompat = [], cLanca = [];
+    cab.forEach((h, i) => {
+      if (/^compat/i.test(normNome_(h))) cCompat.push(i);
+      else if (/^\d+([.,]\d+)?\s*m$/i.test(h)) cLanca.push(i);
+    });
+    if (cC < 0) return json({ ok:false, version: SCRIPT_VERSION, error:`Aba '${sh.getName()}': coluna CÓDIGO não encontrada na linha 3` });
+
+    const txt = (r, i) => i < 0 ? "" : String(r[i] == null ? "" : r[i]).trim();
+    const itens = [];
+    vals.slice(1).forEach(r => {
+      const codigo = txt(r, cC);
+      if (!codigo) return;
+      const qtd = {};
+      cLanca.forEach(i => { const q = Number(r[i]); if (q > 0) qtd[cab[i]] = q; });
+      itens.push({
+        grupo: txt(r, cG), descricao: txt(r, cD), codigo, tamanho: txt(r, cT), gt: txt(r, cGT),
+        compat: cCompat.map(i => txt(r, i)).filter(Boolean), qtd
+      });
+    });
+    return json({ ok:true, version: SCRIPT_VERSION, encontrado:true, aba: sh.getName(), lancas: cLanca.map(i => cab[i]), itens });
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -143,6 +213,23 @@ function doGet(e) {
     return json({ ok:true, version: SCRIPT_VERSION, mapa });
   }
 
+  // mode=machinecards_por_gt: para um GT (coluna M), mapa Código C (coluna L, 12 dígitos) -> machine cards
+  // (id = código individual da coluna K; codigo9 = coluna H). Uma chamada para a lista inteira.
+  if (mode === "machinecards_por_gt") {
+    const gt = normNome_(params.gt);
+    if (!gt) return json({ ok:false, version: SCRIPT_VERSION, error:"Parâmetro 'gt' ausente" });
+    const mapa = {};
+    for (let m1 = 1; m1 < data.length; m1++) {
+      if (normNome_(data[m1][M]) !== gt) continue;
+      const chave = chaveCodigoC_(data[m1][L]);
+      if (!chave) continue;
+      (mapa[chave] = mapa[chave] || []).push({
+        id: normNumberish(data[m1][K]), codigo9: normNumberish(data[m1][H]), codigoC: String(data[m1][L] || "").trim()
+      });
+    }
+    return json({ ok:true, version: SCRIPT_VERSION, mapa });
+  }
+
   // mode=i_por_h (H->I)
   if (mode === "i_por_h") {
     const codigoH = String((params.codigo || params.h || "")).trim();
@@ -197,6 +284,24 @@ function doGet(e) {
   }
 
   return json({ ok:false, version: SCRIPT_VERSION, error:"mode inválido ou ausente" });
+}
+
+// Compara nomes de abas/modelos/GT ignorando acentos, espaços extras e maiúsculas
+function normNome_(v) {
+  return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function abaPorNome_(ss, nome) {
+  const alvo = normNome_(nome);
+  return ss.getSheets().find(sh => normNome_(sh.getName()) === alvo) || null;
+}
+
+// Código C só com letras/dígitos: "C 051.001-621.111 002" -> "C051001621111" (ignora sufixo)
+function chaveCodigoC_(v) {
+  const d = String(v == null ? "" : v).toUpperCase().replace(/[^0-9A-Z]/g, "");
+  const m = d.match(/^C\d{12}/);
+  return m ? m[0] : "";
 }
 
 function json(obj) {
