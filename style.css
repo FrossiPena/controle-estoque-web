@@ -1,4 +1,4 @@
-/* style_v5.11.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.12.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -410,3 +410,22 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .eq-id-falta{ background: #dc2626; color: #fff; }
 .eq-item-ok{ border-left: 6px solid #16a34a; }
 .eq-item-falta{ border-left: 6px solid #dc2626; }
+
+/* Cadastro: conferência com a MachineCards */
+.cad-mc{ margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; }
+.cad-mc-ok{ background: #ecfdf5; border: 1px solid #86efac; }
+.cad-mc-falta{ background: #fff7ed; border: 1px solid #fdba74; }
+.cad-mc button{ margin-top: 8px; width: 100%; }
+
+/* Ajuste de machine card */
+.aj-bloco{ margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.aj-opcao{ width: 100%; text-align: left; background: #f6f7f9; border: 1px solid #d7dbe2; font-size: 13px; line-height: 1.35; }
+.aj-opcao-sel{ background: #dbeafe; border-color: #2563eb; font-weight: 700; }
+.aj-grupo{ margin: 8px 0 0; font-size: 12px; font-weight: 700; opacity: .8; }
+.aj-alerta{ margin-top: 10px; padding: 10px; border-radius: 8px; background: #fef2f2; border: 2px solid #dc2626; }
+.aj-alerta p{ margin: 0 0 6px; font-weight: 700; color: #991b1b; }
+#aj-gravar{ background: #2563eb; color: #fff; }
+
+/* Equipamento: ID de fábrica substituído por ajuste */
+.eq-id-antigo{ color: #6b7280; text-decoration: line-through; background: #f3f4f6; }
+.eq-tag-ajuste{ margin-left: 4px; padding: 1px 5px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: 10px; font-weight: 700; text-decoration: none; }

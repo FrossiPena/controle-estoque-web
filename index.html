@@ -1,13 +1,13 @@
-<!-- index.html - v5.11.0 (Login + Consulta ítem + Cadastro + Inventário + Equipamento com conferência por inventário) -->
+<!-- index.html - v5.12.0 (Login + Consulta ítem + Cadastro com ajuste de machine card + Inventário + Equipamento) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.11.0" />
+  <meta name="app-version" content="v5.12.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.11.0" />
+  <link rel="stylesheet" href="style.css?v=5.12.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -275,6 +275,9 @@
         <label>Status</label>
         <p id="status-msg"></p>
       </div>
+
+      <!-- Resultado da conferência com a MachineCards (preenchido após Registrar) -->
+      <div id="cad-mc" class="cad-mc" hidden></div>
     </section>
 
     <!-- 3) Consultar Inventário -->
@@ -334,6 +337,37 @@
       <div id="eq-lista" class="eq-lista"></div>
     </section>
 
+    <!-- Ajuste de machine card (aberto a partir do Cadastro) -->
+    <section class="frame" id="screen-ajuste" hidden>
+      <h2>Ajuste de machine card</h2>
+      <p class="secao-info">
+        A peça registrada não consta na MachineCards. Informe o GT, a peça e qual ID de fábrica
+        ela substitui. O machine card da fábrica fica preservado; o ajuste vai para a aba AJUSTE.
+      </p>
+      <p id="aj-peca" class="lista-inv-titulo"></p>
+
+      <label class="campo-label" for="aj-gt">GT</label>
+      <select id="aj-gt" disabled><option value="">Carregando…</option></select>
+
+      <div id="aj-alerta" class="aj-alerta" hidden>
+        <p id="aj-alerta-texto"></p>
+        <label class="campo-label" for="aj-confirmo">Para continuar, digite CONFIRMO</label>
+        <input type="text" id="aj-confirmo" autocomplete="off" autocapitalize="characters" />
+      </div>
+
+      <div id="aj-posicao" class="aj-bloco"></div>
+      <div id="aj-ids" class="aj-bloco"></div>
+
+      <label class="campo-label" for="aj-obs">Observação (opcional)</label>
+      <textarea id="aj-obs" rows="2"></textarea>
+
+      <div class="consulta-actions">
+        <button type="button" id="aj-gravar" disabled>Gravar ajuste</button>
+        <button type="button" id="aj-voltar">Voltar ao Cadastro</button>
+      </div>
+      <p id="aj-status" class="secao-info"></p>
+    </section>
+
     <!-- 5) Debug -->
     <section class="frame" id="screen-debug" hidden>
       <h2>Debug</h2>
@@ -369,7 +403,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.11.0"></script>
+  <script src="app.js?v=5.12.0"></script>
 </body>
 </html>
 
