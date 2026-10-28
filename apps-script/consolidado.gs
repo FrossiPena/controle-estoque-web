@@ -1,4 +1,7 @@
-// v4.5 - Consolidado WebApp
+// v4.6 - Consolidado WebApp
+// Inclusão: ajuste sem ID antigo (peça adicional/opcional comprada para o GT). ALERTA começa com "INCLUSÃO".
+//   machinecards_por_gt traz as inclusões na posição; uma peça incluída também pode ser substituída depois.
+// v4.5
 // Ajuste de machine card: aba AJUSTE (registro, só acrescenta linhas) nesta planilha.
 //   verificar_peca (código 9 + ID existe? se não, onde o código 9 é conhecido), gts_todos (GT → modelo),
 //   gravar_ajuste (valida, alerta de outro modelo exige "CONFIRMO", grava sob LockService),
@@ -15,7 +18,7 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.5";
+const SCRIPT_VERSION = "v4.6";
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
@@ -247,9 +250,20 @@ function doGet(e) {
         id: normNumberish(data[m1][K]), codigo9: normNumberish(data[m1][H]), codigoC: String(data[m1][L] || "").trim()
       });
     }
-    // Ajustes deste GT: o mais recente (linha mais abaixo) de cada ID de fábrica vence
+    // Ajustes deste GT, na ordem da planilha: inclusões entram na posição; substituições valem para o
+    // ID de fábrica ou incluído (a mais recente de cada ID vence)
     lerAjustes_(ss).forEach(a => {
       if (normNome_(a.gt) !== gt) return;
+      if (!a.idAntigo) {
+        const k = chaveCodigoC_(a.posicao);
+        if (!k) return;
+        const lista = (mapa[k] = mapa[k] || []);
+        if (!lista.some(mc => normCod_(mc.id) === a.idNovo && normCod_(mc.codigo9) === a.c9Novo)) {
+          lista.push({ id: a.idNovo, codigo9: a.c9Novo, codigoC: a.posicao,
+                       inclusao: { data: a.data, usuario: a.usuario, linha: a.linha } });
+        }
+        return;
+      }
       Object.keys(mapa).forEach(k => mapa[k].forEach(mc => {
         if (normCod_(mc.id) === a.idAntigo && normCod_(mc.codigo9) === a.c9Antigo) {
           mc.ajuste = { id: a.idNovo, codigo9: a.c9Novo, data: a.data, usuario: a.usuario, linha: a.linha };
@@ -306,7 +320,8 @@ function doGet(e) {
     const gtP = String(params.gt || "").trim(), posicao = String(params.posicao || "").trim();
     const c9A = normCod_(params.c9_antigo), idA = normCod_(params.id_antigo);
     const c9N = normCod_(params.c9_novo), idN = normCod_(params.id_novo);
-    if (!gtP || !posicao || !c9A || !idA || !c9N || !idN) {
+    const inclusao = params.tipo === "inclusao";
+    if (!gtP || !posicao || !c9N || !idN || (!inclusao && (!c9A || !idA))) {
       return json({ ok:false, version: SCRIPT_VERSION, error:"Faltam dados do ajuste (GT, posição, IDs)" });
     }
     const modelo = (gtModelos_().find(x => normNome_(x.gt) === normNome_(gtP)) || {}).modelo || "";
@@ -315,11 +330,17 @@ function doGet(e) {
     const ex = pecaExiste_(c9N, idN);
     if (ex) return json({ ok:false, version: SCRIPT_VERSION, error:`A peça ${c9N} / ID ${idN} já existe (${ex.origem}, ${ex.gt}). Não precisa de ajuste.` });
 
-    let antigoOk = false;
-    for (let i = 1; i < data.length && !antigoOk; i++) {
-      antigoOk = normNome_(data[i][M]) === normNome_(gtP) && normCod_(data[i][H]) === c9A && normCod_(data[i][K]) === idA;
+    if (!inclusao) {
+      // ID substituído: de fábrica (MachineCards) ou uma peça incluída antes neste GT
+      let antigoOk = false;
+      for (let i = 1; i < data.length && !antigoOk; i++) {
+        antigoOk = normNome_(data[i][M]) === normNome_(gtP) && normCod_(data[i][H]) === c9A && normCod_(data[i][K]) === idA;
+      }
+      if (!antigoOk) {
+        antigoOk = lerAjustes_(ss).some(a => !a.idAntigo && normNome_(a.gt) === normNome_(gtP) && a.c9Novo === c9A && a.idNovo === idA);
+      }
+      if (!antigoOk) return json({ ok:false, version: SCRIPT_VERSION, error:`O ID ${idA} (código 9 ${c9A}) não consta na MachineCards do ${gtP}` });
     }
-    if (!antigoOk) return json({ ok:false, version: SCRIPT_VERSION, error:`O ID ${idA} (código 9 ${c9A}) não consta na MachineCards do ${gtP}` });
 
     // Trava contra engano: código 9 conhecido só em OUTRO modelo de grua
     const lista = conhecido_(c9N);
@@ -331,6 +352,7 @@ function doGet(e) {
         return json({ ok:false, version: SCRIPT_VERSION, precisaConfirmar:true, alerta });
       }
     }
+    if (inclusao) alerta = "INCLUSÃO" + (alerta ? "; " + alerta : "");
 
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(LOCK_ESPERA_MS)) return json({ ok:false, version: SCRIPT_VERSION, error:"servidor ocupado, nada foi gravado; tente de novo" });
@@ -451,7 +473,7 @@ function lerAjustes_(ss) {
       c9Antigo: normCod_(r[6]), idAntigo: normCod_(r[7]), c9Novo: normCod_(r[8]), idNovo: normCod_(r[9]),
       alerta: String(r[10] || "").trim()
     }))
-    .filter(a => a.gt && a.idAntigo && a.idNovo);
+    .filter(a => a.gt && a.idNovo);   // idAntigo vazio = inclusão
 }
 
 function abaPorNome_(ss, nome) {
