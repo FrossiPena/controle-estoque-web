@@ -1,13 +1,13 @@
-<!-- index.html - v5.12.0 (Login + Consulta ítem + Cadastro com ajuste de machine card + Inventário + Equipamento) -->
+<!-- index.html - v5.13.0 (Login + Consulta ítem + Cadastro com ajuste/inclusão de machine card + Inventário + Equipamento) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.12.0" />
+  <meta name="app-version" content="v5.13.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.12.0" />
+  <link rel="stylesheet" href="style.css?v=5.13.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -341,8 +341,8 @@
     <section class="frame" id="screen-ajuste" hidden>
       <h2>Ajuste de machine card</h2>
       <p class="secao-info">
-        A peça registrada não consta na MachineCards. Informe o GT, a peça e qual ID de fábrica
-        ela substitui. O machine card da fábrica fica preservado; o ajuste vai para a aba AJUSTE.
+        A peça registrada não consta na MachineCards. Informe o GT, a peça e qual ID ela substitui
+        (ou "inclusão", se for uma peça a mais). A MachineCards fica preservada; o ajuste vai para a aba AJUSTE.
       </p>
       <p id="aj-peca" class="lista-inv-titulo"></p>
 
@@ -403,7 +403,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.12.0"></script>
+  <script src="app.js?v=5.13.0"></script>
 </body>
 </html>
 

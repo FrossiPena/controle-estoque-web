@@ -31,6 +31,8 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   recente de cada ID de fábrica vale. Colunas: DATAHORA | USUARIO | GT | MODELO | POSICAO (CODIGO C) | DESCRICAO |
   CODIGO9 ANTIGO | ID ANTIGO | CODIGO9 NOVO | ID NOVO | ALERTA | OBS. Código 9 conhecido só em outro modelo
   exige "CONFIRMO" e fica marcado em ALERTA.
+  Inclusão (peça adicional/opcional comprado) = linha sem CODIGO9/ID ANTIGO e ALERTA começando com "INCLUSÃO";
+  ela entra na posição do GT e pode ser substituída depois por outro ajuste.
 
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
