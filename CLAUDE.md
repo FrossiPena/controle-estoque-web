@@ -33,6 +33,9 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   exige "CONFIRMO" e fica marcado em ALERTA.
   Inclusão (peça adicional/opcional comprado) = linha sem CODIGO9/ID ANTIGO e ALERTA começando com "INCLUSÃO";
   ela entra na posição do GT e pode ser substituída depois por outro ajuste.
+- Compatíveis inseridos pelo app (Equipamento → "+ Inserir compatível"): o usuário digita código 9 ou Código C;
+  o script converte pela MachineCards e grava sempre o Código C padronizado na 1ª coluna COMPATÍVEL vazia
+  da linha da peça (aba do modelo na RELAÇÃO), com nota de quem/quando. Código só de outro modelo exige CONFIRMO.
 
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
