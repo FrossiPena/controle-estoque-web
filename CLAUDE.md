@@ -50,3 +50,29 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
 - Dados vindos da planilha entram no DOM com `textContent`, não `innerHTML`.
+
+## Mapa do código
+Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)`, que também para o leitor de QR):
+- **consulta** (Consulta ítem): QR (`iniciarLeitor`/`pararLeitor`/`processarQRCode`) → `consultarDados` (descrição,
+  Código C, patrimônio pelo Consolidado) → `consultarUltimoInventario` (seção 4: fotos, GPS → `abrirLocalizacaoUlt`).
+- **cadastro**: `registrarMovimentacaoUI` → `log_mov` no Inventário; `carregarUltimoNumInv`; `verificarPecaCadastro`
+  (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`.
+- **inventario** (Consultar Inventário): `listarInventario`, `buscaCompletaUI`, `consultarLinhaInventarioUI`,
+  `deletarLinhaInventarioUI`.
+- **equipamento**: grua → GT → comprimento de lança (`carregarGruasEq`, `onGruaEq`, `onGtEq`, `renderListaEq`);
+  confronta com inventários (`carregarInventariosEq`, `inventariadoEq`); "+ Inserir compatível" = `abrirCompatEq`.
+- **ajuste**: `abrirAjuste` → `onGtAjuste` → `renderPosicoesAjuste` → `escolherPosicaoAjuste` (IDs de fábrica /
+  inclusão) → `renderCompatAjuste` (outro desenho?) → `atualizarBotaoAjuste` → `gravarAjuste`. Estado em `AJ`.
+- **debug**: `logDebug`, `copiarDebug`. Login: `fazerLogin`/`mostrarLogin`, credenciais em `localStorage.ce_auth`.
+Estado da tela Equipamento em `EQ` (caches `lancasPorGrua`, `mcPorGt`…); helpers `eqGetJson`, `eqChaveC`, `eqNorm`, `eqEl`.
+
+Modos do `doGet`:
+- `inventario.gs`: diag, login, diag_drive, log_mov, get_lin, ultimo_inv, lista_inv, inv_resumo, ultimo_numinv,
+  clear_lin; `doPost` upload_foto (slot 1..4 → colunas I..L).
+- `consolidado.gs`: diag, login, gruas_lista, gts_por_grua, gts_todos, lancas_grua (`todas=1` = todas as peças),
+  h_por_l, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, machinecards_por_gt (já aplica AJUSTE/inclusões),
+  compat_previa, compat_inserir, verificar_peca, gravar_ajuste (`tipo=inclusao`; `compat=1` + `codigo_c_novo`).
+
+## Testes (rodar antes de publicar)
+Ver `testes/README.md`. `node testes/consolidado.test.js` (script do Consolidado simulado em Node) e
+`node testes/navegador.test.js` (Playwright, Apps Scripts interceptados). Ao mudar um fluxo, acrescente o caso.

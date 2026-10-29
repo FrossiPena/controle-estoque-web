@@ -1,0 +1,3 @@
+node_modules/
+# RELAÇÃO completa para testes locais (dados internos: não versionar)
+testes/dados/
