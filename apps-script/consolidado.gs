@@ -1,4 +1,6 @@
-// v4.11 - Consolidado WebApp
+// v4.12 - Consolidado WebApp
+// Usuário "consulta" (genérico, só leitura): compat_inserir e gravar_ajuste são recusados.
+// v4.11
 // Inserir compatível aceita código 9 com 8 dígitos (códigos antigos).
 // v4.10
 // mode=gruas também traz os GTs que usam a peça por compatibilidade (mesma linha da RELAÇÃO: CÓDIGO LBR +
@@ -34,7 +36,9 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.11";
+const SCRIPT_VERSION = "v4.12";
+const USUARIO_CONSULTA = "consulta";                     // login genérico só de leitura
+const MODOS_GRAVACAO = ["compat_inserir", "gravar_ajuste"];
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
@@ -54,6 +58,9 @@ function doGet(e) {
 
   const usuario = auth_(params.user, params.pass);
   if (!usuario) return json({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
+  if (usuario === USUARIO_CONSULTA && MODOS_GRAVACAO.includes(mode)) {
+    return json({ ok:false, semPermissao:true, version: SCRIPT_VERSION, error:"usuário de consulta não pode gravar" });
+  }
 
   if (mode === "login") {
     return json({ ok:true, version: SCRIPT_VERSION, user: usuario });

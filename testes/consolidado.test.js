@@ -115,4 +115,18 @@ ok("compatíveis lotados: nada é gravado", () => {
   assert.strictEqual(m.abas.AJUSTE.rows.length, antes);
 });
 
+ok("usuário consulta lê, mas não grava compatível nem ajuste", () => {
+  const m0 = criarMock();
+  const c = (p) => m0.q(Object.assign({ user: "consulta", pass: "y" }, p));
+  assert.ok(c({ mode: "gruas", h: "146000042" }).ok);
+  assert.ok(c({ mode: "lancas_grua", grua: MODELO }).ok);
+  const antesRel = JSON.stringify(m0.aba(MODELO).rows), antesAj = m0.abas.AJUSTE.rows.length;
+  const ci = c({ mode: "compat_inserir", grua: MODELO, gt: "GT-26", codigo: "C051.043-629.111", entrada: "90009999" });
+  assert.ok(!ci.ok && ci.semPermissao && ci.auth !== false, JSON.stringify(ci));
+  const ga = c(Object.assign({ mode: "gravar_ajuste", gt: "GT-26" }, base));
+  assert.ok(!ga.ok && ga.semPermissao, JSON.stringify(ga));
+  assert.strictEqual(JSON.stringify(m0.aba(MODELO).rows), antesRel);
+  assert.strictEqual(m0.abas.AJUSTE.rows.length, antesAj);
+});
+
 console.log(`\n${n} testes OK`);

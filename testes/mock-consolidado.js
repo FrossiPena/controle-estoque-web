@@ -52,7 +52,7 @@ function criarMock(relacaoJson = process.env.RELACAO_JSON || path.join(__dirname
   const rel = { getSheets: () => relSheets };
   const ctx = {
     ContentService: { createTextOutput: t => ({ setMimeType: () => JSON.parse(t) }), MimeType: { JSON: 1 } },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "real:x" }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => "real:x,consulta:y" }) },
     SpreadsheetApp: { openById: () => rel, getActiveSpreadsheet: () => ativa, flush() {} },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
     Utilities: { formatDate: () => "2026-10-28 15:00:00" },

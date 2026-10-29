@@ -28,8 +28,8 @@ const servidor = http.createServer((req, res) => {
     const erros = [];
     page.on("pageerror", e => erros.push(e.message));
     page.on("dialog", d => d.dismiss());
-    await page.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
-    await page.route("https://script.google.com/**", r => {
+    await ctx.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
+    await ctx.route("https://script.google.com/**", r => {
       const u = new URL(r.request().url()); const p = Object.fromEntries(u.searchParams);
       const inventario = { log_mov: { ok: true, appended: true, row: 90, sheet: "Mov", dataHora: "x" }, ultimo_numinv: { ok: true, numInv: "5" }, inv_resumo: { ok: true, numinvs: [], chaves: {} } };
       const body = u.pathname.includes("AKfycbxClcs2") ? (inventario[p.mode] || { ok: true }) : m.q(p);
@@ -109,6 +109,24 @@ const servidor = http.createServer((req, res) => {
     await page.waitForFunction(() => /Por ajuste/.test(document.getElementById("gruas-aplicaveis").value));
     assert.match(await page.inputValue("#gruas-aplicaveis"), /Por ajuste: GT-13 \(inclusão\)/);
     console.log("ok - Consulta mostra compatíveis e ajustes");
+
+    // G) usuário consulta: menu só Consulta e Equipamento, sem "+ Inserir compatível"
+    const pc = await ctx.newPage();
+    pc.on("pageerror", e => erros.push(e.message));
+    await pc.addInitScript(() => localStorage.setItem("ce_auth", JSON.stringify({ user: "consulta", pass: "y" })));
+    await pc.goto(url);
+    const visiveis = await pc.$$eval(".nav button", bs => bs.filter(b => !b.hidden).map(b => b.dataset.screen));
+    assert.deepStrictEqual(visiveis, ["consulta", "equipamento"]);
+    await pc.evaluate(() => showScreen("equipamento"));
+    await pc.waitForFunction(() => document.getElementById("eq-grua").options.length > 1);
+    await pc.selectOption("#eq-grua", "280 EC-H 12 Litronic");
+    await pc.waitForFunction(() => document.getElementById("eq-gt").options.length > 1);
+    await pc.selectOption("#eq-gt", "GT-26");
+    await pc.waitForFunction(() => document.getElementById("eq-lanca").options.length > 1);
+    await pc.selectOption("#eq-lanca", "75m");
+    await pc.locator("#eq-lista .eq-item").first().waitFor();
+    assert.strictEqual(await pc.locator(".eq-compat-btn").count(), 0);
+    console.log("ok - usuário consulta: só Consulta e Equipamento, sem inserir compatível");
 
     assert.deepStrictEqual(erros, [], "erros de JavaScript na página");
     console.log("\nnavegador OK");

@@ -1,3 +1,4 @@
+// v5.9-inv - Usuário "consulta" (genérico, só leitura): log_mov, clear_lin e upload_foto são recusados
 // v5.8-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
 // I fotoUrl | J fotoUrl2 | K fotoUrl3 | L fotoUrl4 | M OBS | N usuario
@@ -10,7 +11,9 @@
 // inv_resumo: números de inventário (H) existentes + mapa "código9|individual" -> {NumInv: linha mais recente}
 // log_mov: grava sob LockService (fila de até LOCK_ESPERA_MS) para cada registro receber a própria linha
 
-const SCRIPT_VERSION = "v5.8-inv";
+const SCRIPT_VERSION = "v5.9-inv";
+const USUARIO_CONSULTA = "consulta";          // login genérico só de leitura
+const MODOS_GRAVACAO = ["log_mov", "clear_lin"]; // + doPost upload_foto
 const LOCK_ESPERA_MS = 10000; // espera máxima pela vez de gravar; depois responde "servidor ocupado"
 const LISTA_MAX = 200; // limite de itens do lista_inv
 const NCOLS = 14; // A..N
@@ -34,6 +37,7 @@ function doGet(e) {
 
     const usuario = auth_(p.user, p.pass);
     if (!usuario) return json_({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
+    if (usuario === USUARIO_CONSULTA && MODOS_GRAVACAO.includes(mode)) return semPermissao_();
 
     if (mode === "login") {
       return json_({ ok:true, version: SCRIPT_VERSION, user: usuario });
@@ -216,9 +220,11 @@ function doPost(e) {
     const payload = JSON.parse(raw || "{}");
     const mode = String(payload.mode || "").trim();
 
-    if (!auth_(payload.user, payload.pass)) {
+    const usuario = auth_(payload.user, payload.pass);
+    if (!usuario) {
       return json_({ ok:false, auth:false, version: SCRIPT_VERSION, error:"acesso negado" });
     }
+    if (usuario === USUARIO_CONSULTA) return semPermissao_();
 
     if (mode !== "upload_foto") {
       return json_({ ok:false, version: SCRIPT_VERSION, error:"mode inválido no POST" });
@@ -351,6 +357,11 @@ function rowToData_(values) {
     obs:      values[12] || "",
     usuario:  values[13] || ""
   };
+}
+
+// Usuário de consulta tentando gravar (sem auth:false: o app não desloga)
+function semPermissao_() {
+  return json_({ ok:false, semPermissao:true, version: SCRIPT_VERSION, error:"usuário de consulta não pode gravar" });
 }
 
 // Valida user/pass contra a propriedade USUARIOS ("nome:senha" por linha).

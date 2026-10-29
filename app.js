@@ -1,3 +1,4 @@
+// v5.17.0 - Usuário "consulta" (login genérico): menu só com Consulta ítem e Equipamento, sem "+ Inserir compatível"
 // v5.16.2 - "+ Inserir compatível" aceita código 9 com 8 dígitos (Consolidado v4.11)
 // v5.16.1 - Código 9 com 8 dígitos não fica mais vermelho (Consulta e Cadastro)
 // v5.16.0 - Consulta: "Gruas aplicáveis" mostra também os GTs com peça compatível (GT → Código C usado)
@@ -32,7 +33,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.16.2";
+const APP_VERSION = "v5.17.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -184,9 +185,19 @@ function authParams() {
   return `&user=${encodeURIComponent(AUTH.user)}&pass=${encodeURIComponent(AUTH.pass)}`;
 }
 
+// Login genérico só de leitura: vê Consulta ítem e Equipamento (os Apps Scripts recusam as gravações)
+function ehUsuarioConsulta() {
+  return AUTH.user.trim().toLowerCase() === "consulta";
+}
+
 function atualizarUsuarioUI() {
   const el = document.getElementById("user-info");
   if (el) el.textContent = (AUTH.user ? `Usuário: ${AUTH.user} · ` : "") + APP_VERSION;
+  const soConsulta = ehUsuarioConsulta();
+  document.querySelectorAll(".nav button").forEach(btn => {
+    btn.hidden = soConsulta && !["consulta", "equipamento"].includes(btn.dataset.screen);
+  });
+  if (soConsulta && !["consulta", "equipamento"].includes(CURRENT_SCREEN)) showScreen("consulta");
 }
 
 function mostrarLogin(msg) {
@@ -1171,12 +1182,14 @@ function renderListaEq() {
     idsTotal += Math.max(totalNoItem, qtd); idsOk += okNoItem;
     card.appendChild(ids);
 
-    const btnCompat = document.createElement("button");
-    btnCompat.type = "button";
-    btnCompat.className = "eq-compat-btn";
-    btnCompat.textContent = "+ Inserir compatível";
-    btnCompat.addEventListener("click", () => abrirCompatEq(card, it, grua, gt));
-    card.appendChild(btnCompat);
+    if (!ehUsuarioConsulta()) {
+      const btnCompat = document.createElement("button");
+      btnCompat.type = "button";
+      btnCompat.className = "eq-compat-btn";
+      btnCompat.textContent = "+ Inserir compatível";
+      btnCompat.addEventListener("click", () => abrirCompatEq(card, it, grua, gt));
+      card.appendChild(btnCompat);
+    }
     ul.appendChild(card);
   });
 

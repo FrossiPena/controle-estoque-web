@@ -24,6 +24,10 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   que muda a URL). Confira depois com `…/exec?mode=diag`.
 - Implantações usadas pelo app: inventário `AKfycbxClcs2…`, consolidado `AKfycbxE5uwm…`.
 - Toda chamada (exceto `diag`) exige `user`/`pass` validados contra a propriedade `USUARIOS`.
+- Usuário `consulta` (login genérico, cadastrado no `USUARIOS` dos dois scripts): só leitura. Os scripts recusam
+  (`semPermissao:true`, sem deslogar) `compat_inserir`, `gravar_ajuste` (Consolidado), `log_mov`, `clear_lin` e
+  `upload_foto` (Inventário); o app (`ehUsuarioConsulta`) mostra só Consulta ítem e Equipamento, sem "+ Inserir compatível".
+  Função nova que grave: incluir o modo em `MODOS_GRAVACAO` do script.
 - Planilhas lidas pelo script do Consolidado: aba `MachineCards Consolidado` (própria) e RELAÇÃO DE PRODUTOS
   (`RELACAO_SHEET_ID`: `Gruas lista`, `Validação` e uma aba por modelo de grua).
 - Aba de modelo da RELAÇÃO (cabeçalho na linha 2; linha 1 é do configurador, não mexer): B DESCRIÇÃO,
