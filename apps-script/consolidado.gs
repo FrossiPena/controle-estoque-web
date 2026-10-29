@@ -1,4 +1,8 @@
-// v4.8 - Consolidado WebApp
+// v4.9 - Consolidado WebApp
+// Ajuste (substituição) pode criar o compatível junto: compat=1 + codigo_c_novo grava o Código C na 1ª coluna
+//   COMPATÍVEL vazia da posição (RELAÇÃO). AJUSTE ganha a coluna M "CODIGO C NOVO" (desenho da peça nova;
+//   sem compatível = o da posição). Compatível pelo botão sem machine card: mensagem pede novo cadastro de peça.
+// v4.8
 // Inserir compatível (tela Equipamento): compat_previa (valida código 9 ou C digitado, mostra descrição da
 //   MachineCards coluna I do original e do novo) e compat_inserir (grava o Código C na 1ª coluna COMPATÍVEL
 //   vazia da linha da peça na aba do modelo na RELAÇÃO, com nota de quem/quando; outro modelo exige CONFIRMO)
@@ -25,11 +29,12 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.8";
+const SCRIPT_VERSION = "v4.9";
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
-                    "CODIGO9 ANTIGO", "ID ANTIGO", "CODIGO9 NOVO", "ID NOVO", "ALERTA", "OBS"];
+                    "CODIGO9 ANTIGO", "ID ANTIGO", "CODIGO9 NOVO", "ID NOVO", "ALERTA", "OBS", "CODIGO C NOVO"];
+const MSG_SEM_MC = "Não localizamos o código compatível pelo Machine Card. Necessário um novo cadastro de peça.";
 const LOCK_ESPERA_MS = 10000;
 const RELACAO_SHEET_ID = "14uJ__SLFIYDiPx2NwcgKG0oLY6i_2Bn3gT5PG6qXR-g";
 
@@ -294,6 +299,25 @@ function doGet(e) {
     return primeira;
   }
 
+  // Onde gravar um compatível: linha da peça (chaveItem) na aba do modelo, 1ª coluna COMPATÍVEL vazia.
+  // Devolve {erro} | {ja:true} (já é compatível) | {sh, linha, col} (1-based)
+  function alvoCompat_(grua, chaveItem, chaveNovo) {
+    const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), grua);
+    if (!sh) return { erro: `Aba '${grua}' não encontrada na RELAÇÃO` };
+    const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+    const cab = vals[1].map(v => String(v == null ? "" : v).trim());
+    const cCod = cab.findIndex(h => normNome_(h) === normNome_("CÓDIGO LBR"));
+    const cCompat = []; cab.forEach((h, i) => { if (/^compat/i.test(normNome_(h))) cCompat.push(i); });
+    if (cCod < 0 || !cCompat.length) return { erro: `Aba '${sh.getName()}': colunas CÓDIGO LBR/COMPATÍVEL não encontradas na linha 2` };
+    let linha = -1;
+    for (let r = 2; r < vals.length && linha < 0; r++) if (chaveCodigoC_(vals[r][cCod]) === chaveItem) linha = r;
+    if (linha < 0) return { erro: "Peça não encontrada na aba do modelo" };
+    if (cCompat.some(i => chaveCodigoC_(vals[linha][i]) === chaveNovo)) return { ja: true };
+    const livre = cCompat.find(i => String(vals[linha][i] == null ? "" : vals[linha][i]).trim() === "");
+    if (livre === undefined) return { erro: `As ${cCompat.length} colunas de compatíveis desta peça já estão preenchidas` };
+    return { sh, linha: linha + 1, col: livre + 1 };
+  }
+
   // Valida o pedido e devolve {erro} ou {original, novo, alerta, sh, linha, colLivre, entrada}
   function compatAnalise_() {
     const grua = String(params.grua || "").trim(), gtP = String(params.gt || "").trim();
@@ -309,33 +333,21 @@ function doGet(e) {
         if (normCod_(data[i][H]) === normCod_(d) && chaveCodigoC_(data[i][L])) novo = mcPorChaveC_(chaveCodigoC_(data[i][L]), "");
       }
       if (novo) novo.codigo9 = d; // o código 9 digitado (o Código C pode ter outros códigos 9)
-      if (!novo) return { erro: `Código 9 ${d} não encontrado na MachineCards` };
+      if (!novo) return { erro: MSG_SEM_MC };
     } else if (/^C?\d{12}$/.test(d)) {
       const ch = "C" + d.replace(/^C/, "");
       if (ch === chaveItem) return { erro: "Esse código é o da própria peça" };
       novo = mcPorChaveC_(ch, "");
-      if (!novo) return { erro: `Código C ${formataCodigoC_(ch)} não encontrado na MachineCards` };
+      if (!novo) return { erro: MSG_SEM_MC };
     } else {
       return { erro: "Formato inválido: digite o código 9 (9 dígitos) ou o Código C (C + 12 dígitos, ex.: C051.001-631.111)" };
     }
     const chaveNovo = chaveCodigoC_(novo.codigoC);
     if (chaveNovo === chaveItem) return { erro: "Esse código é o da própria peça" };
 
-    // Linha da peça na aba do modelo (RELAÇÃO), colunas COMPATÍVEL
-    const sh = abaPorNome_(SpreadsheetApp.openById(RELACAO_SHEET_ID), grua);
-    if (!sh) return { erro: `Aba '${grua}' não encontrada na RELAÇÃO` };
-    const lastR = sh.getLastRow(), lastC = sh.getLastColumn();
-    const vals = sh.getRange(1, 1, lastR, lastC).getValues();
-    const cab = vals[1].map(v => String(v == null ? "" : v).trim());
-    const cCod = cab.findIndex(h => normNome_(h) === normNome_("CÓDIGO LBR"));
-    const cCompat = []; cab.forEach((h, i) => { if (/^compat/i.test(normNome_(h))) cCompat.push(i); });
-    if (cCod < 0 || !cCompat.length) return { erro: `Aba '${sh.getName()}': colunas CÓDIGO LBR/COMPATÍVEL não encontradas na linha 2` };
-    let linha = -1;
-    for (let r = 2; r < vals.length && linha < 0; r++) if (chaveCodigoC_(vals[r][cCod]) === chaveItem) linha = r;
-    if (linha < 0) return { erro: "Peça não encontrada na aba do modelo" };
-    if (cCompat.some(i => chaveCodigoC_(vals[linha][i]) === chaveNovo)) return { erro: `${novo.codigoC} já é compatível desta peça` };
-    const livre = cCompat.find(i => String(vals[linha][i] == null ? "" : vals[linha][i]).trim() === "");
-    if (livre === undefined) return { erro: `As ${cCompat.length} colunas de compatíveis desta peça já estão preenchidas` };
+    const alvo = alvoCompat_(grua, chaveItem, chaveNovo);
+    if (alvo.erro) return { erro: alvo.erro };
+    if (alvo.ja) return { erro: `${novo.codigoC} já é compatível desta peça` };
 
     // Trava contra engano: o Código C novo só aparece em GTs de outro modelo
     const modeloDe = {}; gtModelos_().forEach(x => { modeloDe[normNome_(x.gt)] = x.modelo; });
@@ -348,7 +360,7 @@ function doGet(e) {
       && ![...modelos].some(m => normNome_(m) === normNome_(grua))
       ? `${novo.codigoC} aparece só em outro(s) modelo(s): ${[...modelos].join(", ")}` : "";
 
-    return { original: mcPorChaveC_(chaveItem, gtP), novo, alerta, sh, linha: linha + 1, col: livre + 1, entrada };
+    return { original: mcPorChaveC_(chaveItem, gtP), novo, alerta, sh: alvo.sh, linha: alvo.linha, col: alvo.col, entrada };
   }
 
   if (mode === "compat_previa") {
@@ -394,7 +406,7 @@ function doGet(e) {
       add({ modelo: modeloDe[normNome_(gtI)] || "", gt: gtI, codigoC: String(data[i][L] || "").trim(), origem: "machinecards" });
     }
     lerAjustes_(ss).forEach(a => {
-      if (a.c9Novo === c9) add({ modelo: a.modelo, gt: a.gt, codigoC: a.posicao, descricao: a.descricao, origem: "ajuste" });
+      if (a.c9Novo === c9) add({ modelo: a.modelo, gt: a.gt, codigoC: a.codigoCNovo || a.posicao, posicao: a.posicao, descricao: a.descricao, origem: "ajuste" });
     });
     return lista;
   }
@@ -458,21 +470,44 @@ function doGet(e) {
     }
     if (inclusao) alerta = "INCLUSÃO" + (alerta ? "; " + alerta : "");
 
+    // Desenho (Código C) da peça nova: digitado/conhecido; sem compatível, o da própria posição
+    const chavePos = chaveCodigoC_(posicao);
+    const chaveDig = chaveCodigoC_("C" + String(params.codigo_c_novo || "").toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/^C/, ""));
+    const criarCompat = !inclusao && params.compat === "1";
+    if (criarCompat && !chaveDig) return json({ ok:false, version: SCRIPT_VERSION, error:"Informe o Código C da peça nova (C + 12 dígitos)" });
+    if (criarCompat && chaveDig === chavePos) return json({ ok:false, version: SCRIPT_VERSION, error:"O Código C informado é o mesmo da posição: não é compatível, é o mesmo desenho" });
+    const codigoCNovo = formataCodigoC_(chaveDig || chavePos);
+
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(LOCK_ESPERA_MS)) return json({ ok:false, version: SCRIPT_VERSION, error:"servidor ocupado, nada foi gravado; tente de novo" });
-    let linha;
+    let linha, compat = null;
     try {
+      // Valida o destino do compatível ANTES de gravar qualquer coisa
+      let alvo = null;
+      if (criarCompat) {
+        alvo = alvoCompat_(modelo, chavePos, chaveDig);
+        if (alvo.erro) return json({ ok:false, version: SCRIPT_VERSION, error: "Compatível: " + alvo.erro + ". Nada foi gravado." });
+      }
       const sh = abaAjuste_(ss, true);
       sh.appendRow([
         Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm:ss"), usuario, gtP, modelo, posicao,
-        String(params.descricao || "").trim(), c9A, idA, c9N, idN, alerta, String(params.obs || "").trim()
+        String(params.descricao || "").trim(), c9A, idA, c9N, idN, alerta, String(params.obs || "").trim(), codigoCNovo
       ]);
-      SpreadsheetApp.flush();
       linha = sh.getLastRow();
+      if (alvo && !alvo.ja) {
+        const cel = alvo.sh.getRange(alvo.linha, alvo.col);
+        cel.setValue(codigoCNovo);
+        cel.setNote(`Compatível incluído via ajuste por ${usuario} em ${Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd HH:mm")}` +
+                    ` (${gtP}: código 9 ${c9N}, ID ${idN} no lugar do ID ${idA}; aba AJUSTE linha ${linha})`);
+        compat = { gravado: true, codigoC: codigoCNovo, linha: alvo.linha };
+      } else if (alvo && alvo.ja) {
+        compat = { gravado: false, jaExistia: true, codigoC: codigoCNovo };
+      }
+      SpreadsheetApp.flush();
     } finally {
       lock.releaseLock();
     }
-    return json({ ok:true, version: SCRIPT_VERSION, gravado:true, linha, alerta });
+    return json({ ok:true, version: SCRIPT_VERSION, gravado:true, linha, alerta, codigoCNovo, compat });
   }
 
   // mode=i_por_h (H->I)
@@ -563,6 +598,9 @@ function abaAjuste_(ss, criar) {
     if (sh.getLastRow() > 0) sh.insertRowBefore(1);
     sh.getRange(1, 1, 1, AJUSTE_CAB.length).setValues([AJUSTE_CAB]).setFontWeight("bold");
     sh.setFrozenRows(1);
+  } else if (sh && criar && String(sh.getRange(1, AJUSTE_CAB.length).getValue()).trim() === "") {
+    // cabeçalho antigo (sem as colunas acrescentadas depois): completa a linha 1
+    sh.getRange(1, 1, 1, AJUSTE_CAB.length).setValues([AJUSTE_CAB]).setFontWeight("bold");
   }
   return sh;
 }
@@ -582,7 +620,7 @@ function lerAjustes_(ss) {
       usuario: String(r[1] || ""), gt: String(r[2] || "").trim(), modelo: String(r[3] || "").trim(),
       posicao: String(r[4] || "").trim(), descricao: String(r[5] || "").trim(),
       c9Antigo: normCod_(r[6]), idAntigo: normCod_(r[7]), c9Novo: normCod_(r[8]), idNovo: normCod_(r[9]),
-      alerta: String(r[10] || "").trim()
+      alerta: String(r[10] || "").trim(), codigoCNovo: String(r[12] || "").trim()
     }))
     .filter(a => a && a.gt && a.idNovo);   // null = cabeçalho; idAntigo vazio = inclusão
 }

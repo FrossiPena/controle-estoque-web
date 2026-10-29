@@ -1,3 +1,5 @@
+// v5.15.0 - Ajuste (substituição): pergunta se a peça é de outro desenho compatível; se sim, pede o Código C
+//          (pré-preenchido quando conhecido) e grava o compatível junto com o ajuste
 // v5.14.0 - Equipamento: "+ Inserir compatível" em cada item (código 9 ou C → confere descrições da
 //          MachineCards → grava o Código C na RELAÇÃO; outro modelo pede CONFIRMO)
 // v5.13.0 - Ajuste: inclusão de peça adicional (opcional comprado), sem ID de fábrica substituído;
@@ -26,7 +28,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.14.0";
+const APP_VERSION = "v5.15.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -1294,6 +1296,8 @@ const AJ = {
   gt: "", modelo: "",
   posicao: null,           // {codigo, descricao, compat}
   fab: null,               // ID substituído {id, codigo9} ou {inclusao:true} (peça adicional)
+  compat: null,            // substituição: {resposta:"sim"|"nao"|null, codigoC} — peça de outro desenho?
+  codigoCConhecido: "",    // Código C da peça nova, quando a MachineCards/AJUSTE já o conhece
   pecasModelo: {}          // modelo -> itens da RELAÇÃO (todas as peças)
 };
 
@@ -1343,7 +1347,7 @@ function ajStatus(msg) {
 }
 
 async function abrirAjuste(c9, id, conhecido) {
-  Object.assign(AJ, { c9: String(c9), id: String(id), conhecido, gt: "", modelo: "", posicao: null, fab: null });
+  Object.assign(AJ, { c9: String(c9), id: String(id), conhecido, gt: "", modelo: "", posicao: null, fab: null, compat: null, codigoCConhecido: "" });
   showScreen("ajuste");
   window.scrollTo(0, 0);
   document.getElementById("aj-peca").textContent = `Peça registrada: código 9 ${c9} · ID ${id}`;
@@ -1352,6 +1356,7 @@ async function abrirAjuste(c9, id, conhecido) {
   document.getElementById("aj-alerta").hidden = true;
   document.getElementById("aj-posicao").replaceChildren();
   document.getElementById("aj-ids").replaceChildren();
+  renderCompatAjuste();
   ajStatus(conhecido.length
     ? "Código 9 já conhecido: " + [...new Set(conhecido.map(x => x.modelo || x.gt))].join(", ") + "."
     : "Código 9 inédito: escolha a peça na lista do modelo.");
@@ -1407,11 +1412,11 @@ async function onGtAjuste() {
     // Código 9 conhecido neste modelo: posição(ões) já identificadas
     const pos = [];
     doModelo.forEach(x => {
-      const k = eqChaveC(x.codigoC);
+      const k = eqChaveC(x.posicao || x.codigoC);
       if (pos.some(p => eqChaveC(p.codigo) === k)) return;
       const it = pecas.find(p => eqChaveC(p.codigo) === k || (p.compat || []).some(c => eqChaveC(c) === k));
       pos.push(it ? { codigo: it.codigo, descricao: it.descricao, compat: it.compat || [], grupo: it.grupo }
-                  : { codigo: x.codigoC, descricao: x.descricao || "(peça não encontrada na RELAÇÃO)", compat: [], grupo: "" });
+                  : { codigo: x.posicao || x.codigoC, descricao: x.descricao || "(peça não encontrada na RELAÇÃO)", compat: [], grupo: "" });
     });
     renderPosicoesAjuste(pos, pos.length === 1 ? "Peça identificada pelo código 9:" : "O código 9 aparece em mais de uma peça; escolha:", false);
     if (pos.length === 1) escolherPosicaoAjuste(pos[0]);
@@ -1466,6 +1471,11 @@ function renderPosicoesAjuste(pecas, titulo, comBusca) {
 async function escolherPosicaoAjuste(p) {
   AJ.posicao = { codigo: p.codigo, descricao: p.descricao, compat: p.compat || [] };
   AJ.fab = null;
+  AJ.compat = null;
+  // Desenho da peça nova, se já conhecido (de preferência no mesmo modelo)
+  const conh = AJ.conhecido.filter(x => eqNorm(x.modelo) === eqNorm(AJ.modelo)).concat(AJ.conhecido);
+  AJ.codigoCConhecido = (conh.find(x => eqChaveC(x.codigoC)) || {}).codigoC || "";
+  renderCompatAjuste();
   atualizarBotaoAjuste();
   const box = document.getElementById("aj-ids");
   box.replaceChildren();
@@ -1482,7 +1492,7 @@ async function escolherPosicaoAjuste(p) {
       return;
     }
   }
-  if (gt !== AJ.gt || AJ.posicao.codigo !== p.codigo) return;
+  if (gt !== AJ.gt || !AJ.posicao || AJ.posicao.codigo !== p.codigo) return;
 
   const fabs = [];
   [p.codigo].concat(p.compat || []).forEach(c => (mapa[eqChaveC(c)] || []).forEach(mc => fabs.push(mc)));
@@ -1499,17 +1509,67 @@ async function escolherPosicaoAjuste(p) {
       b.className = "aj-opcao" + (AJ.fab && !AJ.fab.inclusao && AJ.fab.id === mc.id && AJ.fab.codigo9 === mc.codigo9 ? " aj-opcao-sel" : "");
       b.textContent = `ID ${mc.id} · código 9 ${mc.codigo9}` + (mc.inclusao ? ` (incluída em ${mc.inclusao.data})` : "") +
         (mc.ajuste ? ` (já ajustado para ID ${mc.ajuste.id} em ${mc.ajuste.data})` : "");
-      b.addEventListener("click", () => { AJ.fab = { id: mc.id, codigo9: mc.codigo9 }; desenhar(); atualizarBotaoAjuste(); });
+      b.addEventListener("click", () => { AJ.fab = { id: mc.id, codigo9: mc.codigo9 }; desenhar(); renderCompatAjuste(); });
       box.appendChild(b);
     });
     const inc = document.createElement("button");
     inc.type = "button";
     inc.className = "aj-opcao aj-opcao-inclusao" + (AJ.fab && AJ.fab.inclusao ? " aj-opcao-sel" : "");
     inc.textContent = `➕ Inclusão: peça adicional no ${gt} (não substitui nenhum ID)`;
-    inc.addEventListener("click", () => { AJ.fab = { inclusao: true }; desenhar(); atualizarBotaoAjuste(); });
+    inc.addEventListener("click", () => { AJ.fab = { inclusao: true }; desenhar(); renderCompatAjuste(); });
     box.appendChild(inc);
   };
   desenhar();
+}
+
+// Substituição: "Esta peça é de outro desenho, compatível com a posição?" (Sim → Código C da peça nova)
+function renderCompatAjuste() {
+  const box = document.getElementById("aj-compat");
+  if (!box) return;
+  box.replaceChildren();
+  box.hidden = true;
+  if (!AJ.fab || AJ.fab.inclusao || !AJ.posicao) { AJ.compat = null; atualizarBotaoAjuste(); return; }
+
+  const conhecido = AJ.codigoCConhecido;
+  if (conhecido && eqChaveC(conhecido) === eqChaveC(AJ.posicao.codigo)) {
+    AJ.compat = { resposta: "nao", codigoC: conhecido };     // mesmo desenho: nada a perguntar
+    atualizarBotaoAjuste();
+    return;
+  }
+  AJ.compat = AJ.compat || { resposta: null, codigoC: conhecido };
+  box.hidden = false;
+  box.appendChild(eqEl("p", "campo-label",
+    `Esta peça é de outro desenho, compatível com ${AJ.posicao.descricao} · ${AJ.posicao.codigo}?`));
+  const desenhar = () => {
+    box.querySelectorAll(".aj-opcao, .aj-compat-campo").forEach(e => e.remove());
+    [["sim", "Sim: é de outro desenho (gravar também como compatível)"], ["nao", "Não: é o mesmo desenho da posição"]].forEach(([v, txt]) => {
+      const b = eqEl("button", "aj-opcao" + (AJ.compat.resposta === v ? " aj-opcao-sel" : ""), txt);
+      b.type = "button";
+      b.addEventListener("click", () => { AJ.compat.resposta = v; desenhar(); atualizarBotaoAjuste(); });
+      box.appendChild(b);
+    });
+    if (AJ.compat.resposta === "sim") {
+      const campo = eqEl("div", "aj-compat-campo");
+      campo.appendChild(eqEl("label", "campo-label", "Código C da peça nova" + (conhecido ? " (conhecido pela MachineCards)" : " (da plaqueta ou do manual)")));
+      const inp = eqEl("input"); inp.type = "text"; inp.id = "aj-compat-codigo";
+      inp.placeholder = "ex.: C051.001-631.111"; inp.autocapitalize = "characters"; inp.value = AJ.compat.codigoC || "";
+      inp.addEventListener("input", () => { AJ.compat.codigoC = inp.value.trim(); atualizarBotaoAjuste(); });
+      campo.appendChild(inp);
+      campo.appendChild(eqEl("p", "eq-compat-msg"));
+      box.appendChild(campo);
+    }
+  };
+  desenhar();
+  atualizarBotaoAjuste();
+}
+
+// Código C válido para o compatível do ajuste: C + 12 dígitos e diferente da posição
+function erroCompatAjuste() {
+  if (!AJ.compat || AJ.compat.resposta !== "sim") return "";
+  const d = String(AJ.compat.codigoC || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  if (!/^C?\d{12}$/.test(d)) return "Código C: C + 12 dígitos (ex.: C051.001-631.111).";
+  if (eqChaveC("C" + d.replace(/^C/, "")) === eqChaveC(AJ.posicao.codigo)) return "É o mesmo desenho da posição: responda \"Não\".";
+  return "";
 }
 
 function atualizarBotaoAjuste() {
@@ -1517,7 +1577,11 @@ function atualizarBotaoAjuste() {
   if (!btn) return;
   const alerta = !document.getElementById("aj-alerta").hidden;
   const confirmado = document.getElementById("aj-confirmo").value.trim().toUpperCase() === "CONFIRMO";
-  btn.disabled = !(AJ.gt && AJ.posicao && AJ.fab && (!alerta || confirmado));
+  const erroC = erroCompatAjuste();
+  const msg = document.querySelector("#aj-compat .eq-compat-msg");
+  if (msg) msg.textContent = AJ.compat && AJ.compat.codigoC ? erroC : "";
+  const compatOk = !AJ.compat || (AJ.compat.resposta && !erroC);
+  btn.disabled = !(AJ.gt && AJ.posicao && AJ.fab && compatOk && (!alerta || confirmado));
 }
 
 async function gravarAjuste() {
@@ -1530,6 +1594,8 @@ async function gravarAjuste() {
     mode: "gravar_ajuste", tipo: inclusao ? "inclusao" : "substituicao",
     gt: AJ.gt, posicao: AJ.posicao.codigo, descricao: AJ.posicao.descricao,
     c9_antigo: inclusao ? "" : AJ.fab.codigo9, id_antigo: inclusao ? "" : AJ.fab.id, c9_novo: AJ.c9, id_novo: AJ.id,
+    compat: AJ.compat && AJ.compat.resposta === "sim" ? "1" : "0",
+    codigo_c_novo: AJ.compat && AJ.compat.resposta === "sim" ? AJ.compat.codigoC : (AJ.codigoCConhecido || ""),
     obs: document.getElementById("aj-obs").value.trim(),
     confirmacao: document.getElementById("aj-confirmo").value.trim(), t: String(Date.now())
   });
@@ -1538,9 +1604,15 @@ async function gravarAjuste() {
     if (j && j.ok && j.gravado) {
       delete EQ.mcPorGt[AJ.gt];          // Equipamento passa a mostrar o ajuste
       const oque = inclusao ? `incluída como peça adicional` : `substitui o ID ${AJ.fab.id}`;
-      ajStatus(`Ajuste gravado (aba AJUSTE, linha ${j.linha}): ${AJ.gt}, ${AJ.posicao.descricao}, ID ${AJ.id} ${oque}.`);
-      mostrarMcCadastro({ ok: true, texto: `✓ Ajuste gravado: ${AJ.c9} / ID ${AJ.id} ${oque} no ${AJ.gt}.` });
-      AJ.conhecido = [{ modelo: AJ.modelo, gt: AJ.gt, codigoC: AJ.posicao.codigo, origem: "ajuste" }];
+      const comp = j.compat ? (j.compat.gravado ? ` Compatível ${j.compat.codigoC} gravado na RELAÇÃO.`
+                                                : ` ${j.compat.codigoC} já era compatível desta peça.`) : "";
+      ajStatus(`Ajuste gravado (aba AJUSTE, linha ${j.linha}): ${AJ.gt}, ${AJ.posicao.descricao}, ID ${AJ.id} ${oque}.${comp}`);
+      mostrarMcCadastro({ ok: true, texto: `✓ Ajuste gravado: ${AJ.c9} / ID ${AJ.id} ${oque} no ${AJ.gt}.${comp}` });
+      AJ.conhecido = [{ modelo: AJ.modelo, gt: AJ.gt, codigoC: j.codigoCNovo || AJ.posicao.codigo, posicao: AJ.posicao.codigo, origem: "ajuste" }];
+      if (j.compat && j.compat.gravado) {   // listas em cache passam a ver o compatível novo
+        Object.keys(EQ.lancasPorGrua).filter(g => eqNorm(g) === eqNorm(AJ.modelo)).forEach(g => delete EQ.lancasPorGrua[g]);
+        delete AJ.pecasModelo[AJ.modelo];
+      }
       return; // botão fica travado: ajuste concluído
     }
     if (j && j.precisaConfirmar) {

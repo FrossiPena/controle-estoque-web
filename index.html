@@ -1,13 +1,13 @@
-<!-- index.html - v5.14.0 (Login + Consulta ítem + Cadastro com ajuste/inclusão + Inventário + Equipamento com inserir compatível) -->
+<!-- index.html - v5.15.0 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.14.0" />
+  <meta name="app-version" content="v5.15.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.14.0" />
+  <link rel="stylesheet" href="style.css?v=5.15.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -357,6 +357,7 @@
 
       <div id="aj-posicao" class="aj-bloco"></div>
       <div id="aj-ids" class="aj-bloco"></div>
+      <div id="aj-compat" class="aj-bloco" hidden></div>
 
       <label class="campo-label" for="aj-obs">Observação (opcional)</label>
       <textarea id="aj-obs" rows="2"></textarea>
@@ -403,7 +404,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.14.0"></script>
+  <script src="app.js?v=5.15.0"></script>
 </body>
 </html>
 
