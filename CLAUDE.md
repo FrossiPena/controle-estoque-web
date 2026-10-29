@@ -23,6 +23,9 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   em **Implantar → Gerenciar implantações → lápis → Versão: Nova versão** (não "Nova implantação",
   que muda a URL). Confira depois com `…/exec?mode=diag`.
 - Implantações usadas pelo app: inventário `AKfycbxClcs2…`, consolidado `AKfycbxE5uwm…`.
+- `apps-script/backup.gs`: projeto próprio (não é web app, sem implantação). Gatilho diário 3h copia Inventário,
+  Consolidado e RELAÇÃO para a pasta "Backup Controle de Estoque" do Drive, lixeira após 30 dias, e-mail em falha.
+  Mudou: só colar no projeto de backup (não há "Nova versão" a publicar).
 - Toda chamada (exceto `diag`) exige `user`/`pass` validados contra a propriedade `USUARIOS`.
 - Usuário `consulta` (login genérico, cadastrado no `USUARIOS` dos dois scripts): só leitura. Os scripts recusam
   (`semPermissao:true`, sem deslogar) `compat_inserir`, `gravar_ajuste` (Consolidado), `log_mov`, `clear_lin` e
