@@ -1,4 +1,6 @@
-// v4.12 - Consolidado WebApp
+// v4.13 - Consolidado WebApp
+// exata e patrimonio_por_h passam a considerar a aba AJUSTE (peça incluída/substituída num GT).
+// v4.12
 // Usuário "consulta" (genérico, só leitura): compat_inserir e gravar_ajuste são recusados.
 // v4.11
 // Inserir compatível aceita código 9 com 8 dígitos (códigos antigos).
@@ -36,7 +38,7 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.12";
+const SCRIPT_VERSION = "v4.13";
 const USUARIO_CONSULTA = "consulta";                     // login genérico só de leitura
 const MODOS_GRAVACAO = ["compat_inserir", "gravar_ajuste"];
 const TZ = "America/Sao_Paulo";
@@ -302,6 +304,9 @@ function doGet(e) {
         if (valM2) encontrados.push(valM2);
       }
     }
+    // Peça que entrou num GT pela aba AJUSTE (inclusão ou substituição): vale o ajuste mais recente
+    const aj = lerAjustes_(ss).filter(a => a.c9Novo === normCod_(codigoH) && a.idNovo === normCod_(codigoK)).pop();
+    if (aj && encontrados.indexOf(aj.gt) < 0) encontrados.push(aj.gt);
     return json({ ok:true, version: SCRIPT_VERSION, exata:(encontrados[0]||""), exatas: encontrados });
   }
 
@@ -318,6 +323,10 @@ function doGet(e) {
       const m = String(data[p1][M] || "").trim();
       if (k && m && !(k in mapa)) mapa[k] = m;
     }
+    // IDs que entraram num GT pela aba AJUSTE (o mais recente de cada ID vale)
+    lerAjustes_(ss).forEach(a => {
+      if (a.c9Novo === normCod_(codigoH)) mapa[a.idNovo] = a.gt;
+    });
     return json({ ok:true, version: SCRIPT_VERSION, mapa });
   }
 

@@ -115,6 +115,15 @@ ok("compatíveis lotados: nada é gravado", () => {
   assert.strictEqual(m.abas.AJUSTE.rows.length, antes);
 });
 
+ok("exata e patrimonio_por_h trazem a peça incluída por ajuste (GT-13)", () => {
+  const m0 = criarMock();
+  assert.strictEqual(m0.q({ mode: "exata", h: "958152101", k: "993" }).exata, "GT-13");
+  assert.strictEqual(m0.q({ mode: "exata", h: "958152101", k: "120" }).exata, "GT-26");   // fábrica continua
+  const mapa = m0.q({ mode: "patrimonio_por_h", h: "958152101" }).mapa;
+  assert.strictEqual(mapa["993"], "GT-13");
+  assert.strictEqual(mapa["120"], "GT-26");
+});
+
 ok("usuário consulta lê, mas não grava compatível nem ajuste", () => {
   const m0 = criarMock();
   const c = (p) => m0.q(Object.assign({ user: "consulta", pass: "y" }, p));
