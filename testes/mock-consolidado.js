@@ -37,7 +37,8 @@ function criarMock(relacaoJson = process.env.RELACAO_JSON || path.join(__dirname
     mcRow("146000042", 1201, "C051.043-629.111 001", "GT-26", "LANÇA 4 280 EC-H 12 (MC)"),
     mcRow("146000099", 300, "C 051.001-631.111", "GT-09", "LANÇA 4 ALTERNATIVA (MC)"),
     mcRow("146000555", 301, "C051.001-640.111", "GT-09", "PEÇA NOVA 640 (MC)"),
-    mcRow("146000035", 1300, "C051.001-632.111", "GT-26", "LANÇA 5 (MC)")];
+    mcRow("146000035", 1300, "C051.001-632.111", "GT-26", "LANÇA 5 (MC)"),
+    mcRow("90009999", 58, "C051.023-629.111", "GT-13", "LANÇA 4 (MC)")];   // código 9 antigo, 8 dígitos
   const abas = {
     "MachineCards Consolidado": sheet("MachineCards Consolidado", mc),
     // AJUSTE antiga, ainda sem a coluna M (o script completa o cabeçalho)

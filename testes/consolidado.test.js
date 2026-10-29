@@ -43,6 +43,16 @@ ok("gruas: diretos, compatíveis (linha da RELAÇÃO, nos dois sentidos) e por a
   assert.deepStrictEqual(m0.q({ mode: "gruas", h: "146000231" }).compat, []);
 });
 
+ok("compatível pelo código 9 de 8 dígitos → GT-13 passa a aparecer em gruas", () => {
+  const m0 = criarMock();
+  const p = { grua: MODELO, gt: "GT-26", codigo: "C051.043-629.111", entrada: "90009999" };
+  const pr = m0.q(Object.assign({ mode: "compat_previa" }, p));
+  assert.ok(pr.ok && pr.novo.codigoC === "C051.023-629.111", JSON.stringify(pr));
+  assert.ok(m0.q(Object.assign({ mode: "compat_inserir" }, p)).gravado);
+  const j = m0.q({ mode: "gruas", h: "146000042" });
+  assert.ok(j.compat.some(x => x.gt === "GT-13" && x.codigoC === "C051.023-629.111"), JSON.stringify(j.compat));
+});
+
 ok("compatível sem machine card → mensagem de novo cadastro", () => {
   const j = m.q({ mode: "compat_previa", grua: MODELO, gt: "GT-26", codigo: "C051.043-629.111", entrada: "C051.001-699.111" });
   assert.strictEqual(j.error, "Não localizamos o código compatível pelo Machine Card. Necessário um novo cadastro de peça.");

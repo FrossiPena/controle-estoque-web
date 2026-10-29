@@ -1,4 +1,6 @@
-// v4.10 - Consolidado WebApp
+// v4.11 - Consolidado WebApp
+// Inserir compatível aceita código 9 com 8 dígitos (códigos antigos).
+// v4.10
 // mode=gruas também traz os GTs que usam a peça por compatibilidade (mesma linha da RELAÇÃO: CÓDIGO LBR +
 //   COMPATÍVEL 1..4 → GTs da MachineCards com o código compatível) e por ajuste (aba AJUSTE).
 // v4.9
@@ -32,7 +34,7 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.10";
+const SCRIPT_VERSION = "v4.11";
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
@@ -389,10 +391,10 @@ function doGet(e) {
     const entrada = String(params.entrada || "").trim();
     if (!grua || !chaveItem || !entrada) return { erro: "Faltam dados (grua, peça ou código digitado)" };
 
-    // Formato: código 9 = 9 dígitos; Código C = "C" + 12 dígitos (pontuação livre, "C" opcional)
+    // Formato: código 9 = 8 ou 9 dígitos; Código C = "C" + 12 dígitos (pontuação livre, "C" opcional)
     const d = entrada.toUpperCase().replace(/[^0-9A-Z]/g, "");
     let novo = null;
-    if (/^\d{9}$/.test(d)) {
+    if (/^\d{8,9}$/.test(d)) {
       for (let i = 1; i < data.length && !novo; i++) {
         if (normCod_(data[i][H]) === normCod_(d) && chaveCodigoC_(data[i][L])) novo = mcPorChaveC_(chaveCodigoC_(data[i][L]), "");
       }
@@ -404,7 +406,7 @@ function doGet(e) {
       novo = mcPorChaveC_(ch, "");
       if (!novo) return { erro: MSG_SEM_MC };
     } else {
-      return { erro: "Formato inválido: digite o código 9 (9 dígitos) ou o Código C (C + 12 dígitos, ex.: C051.001-631.111)" };
+      return { erro: "Formato inválido: digite o código 9 (8 ou 9 dígitos) ou o Código C (C + 12 dígitos, ex.: C051.001-631.111)" };
     }
     const chaveNovo = chaveCodigoC_(novo.codigoC);
     if (chaveNovo === chaveItem) return { erro: "Esse código é o da própria peça" };

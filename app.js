@@ -1,3 +1,4 @@
+// v5.16.2 - "+ Inserir compatível" aceita código 9 com 8 dígitos (Consolidado v4.11)
 // v5.16.1 - Código 9 com 8 dígitos não fica mais vermelho (Consulta e Cadastro)
 // v5.16.0 - Consulta: "Gruas aplicáveis" mostra também os GTs com peça compatível (GT → Código C usado)
 //          e os que receberam a peça por ajuste (inclusão/substituição)
@@ -31,7 +32,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.16.1";
+const APP_VERSION = "v5.16.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -1191,7 +1192,7 @@ function renderListaEq() {
 
 function formatoCodigoOk(entrada) {
   const d = String(entrada || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
-  return /^\d{9}$/.test(d) || /^C?\d{12}$/.test(d);
+  return /^\d{8,9}$/.test(d) || /^C?\d{12}$/.test(d);
 }
 
 function eqEl(tag, cls, texto) {
@@ -1224,7 +1225,7 @@ function abrirCompatEq(card, it, grua, gt) {
     bIns.addEventListener("click", async () => {
       const entrada = inp.value.trim();
       if (!formatoCodigoOk(entrada)) {
-        msg.textContent = "Formato inválido: código 9 = 9 dígitos; Código C = C + 12 dígitos (ex.: C051.001-631.111).";
+        msg.textContent = "Formato inválido: código 9 = 8 ou 9 dígitos; Código C = C + 12 dígitos (ex.: C051.001-631.111).";
         return;
       }
       bIns.disabled = true; msg.textContent = "Buscando na MachineCards…";
