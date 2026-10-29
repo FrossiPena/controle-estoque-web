@@ -3,7 +3,8 @@
   "private": true,
   "description": "Testes locais do app (o site em si não usa npm)",
   "scripts": {
-    "test": "node testes/consolidado.test.js && node testes/navegador.test.js",
+    "test": "node testes/consolidado.test.js && node testes/navegador.test.js && node testes/foto.test.js",
+    "test:foto": "node testes/foto.test.js",
     "test:script": "node testes/consolidado.test.js",
     "test:navegador": "node testes/navegador.test.js"
   },

@@ -5,7 +5,7 @@ Os testes rodam sem o Google: os Apps Scripts são executados em Node com planil
 ## Preparar (uma vez)
 ```
 npm install
-npx playwright install chromium
+npx playwright install chromium webkit
 ```
 
 ## Rodar
@@ -13,6 +13,7 @@ npx playwright install chromium
 npm test                 # os dois
 npm run test:script      # só o script do Consolidado (não precisa do Playwright)
 npm run test:navegador   # app no navegador (Chromium headless)
+npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/Safari)
 ```
 
 ## Arquivos
@@ -24,6 +25,8 @@ npm run test:navegador   # app no navegador (Chromium headless)
   `machinecards_por_gt`, compatíveis lotados).
 - `navegador.test.js`: sobe um servidor local, intercepta `script.google.com` com o mock e percorre
   Cadastro → ajuste → Equipamento.
+- `foto.test.js`: `reduzirFoto`/`uploadFotoParaLinha` no Chromium e no WebKit (Safari): foto 4032x3024 chega com
+  1080 no lado menor, foto com rotação EXIF continua em pé, foto pequena vai como está.
 
 ## RELAÇÃO completa
 Para testar com a planilha inteira, exporte as abas para JSON no mesmo formato, salve em `testes/dados/`

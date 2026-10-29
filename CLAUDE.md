@@ -63,7 +63,8 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
 - **consulta** (Consulta ítem): QR (`iniciarLeitor`/`pararLeitor`/`processarQRCode`) → `consultarDados` (descrição,
   Código C, patrimônio pelo Consolidado) → `consultarUltimoInventario` (seção 4: fotos, GPS → `abrirLocalizacaoUlt`).
 - **cadastro**: `registrarMovimentacaoUI` → `log_mov` no Inventário; `carregarUltimoNumInv`; `verificarPecaCadastro`
-  (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`.
+  (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`
+  (`reduzirFoto`: acima de Full HD reduz para 1080 no lado menor, JPEG 0,85; se falhar, envia o original).
 - **inventario** (Consultar Inventário): `listarInventario`, `buscaCompletaUI`, `consultarLinhaInventarioUI`,
   `deletarLinhaInventarioUI`.
 - **equipamento**: grua → GT → comprimento de lança (`carregarGruasEq`, `onGruaEq`, `onGtEq`, `renderListaEq`);
@@ -82,4 +83,5 @@ Modos do `doGet`:
 
 ## Testes (rodar antes de publicar)
 Ver `testes/README.md`. `node testes/consolidado.test.js` (script do Consolidado simulado em Node) e
-`node testes/navegador.test.js` (Playwright, Apps Scripts interceptados). Ao mudar um fluxo, acrescente o caso.
+`node testes/navegador.test.js` (Playwright, Apps Scripts interceptados) e
+`node testes/foto.test.js` (redução de foto no Chromium e no WebKit/Safari). Ao mudar um fluxo, acrescente o caso.

@@ -1,3 +1,4 @@
+// v5.18.0 - Fotos maiores que Full HD são reduzidas no celular antes do envio (1080 no lado menor, JPEG 0,85)
 // v5.17.0 - Usuário "consulta" (login genérico): menu só com Consulta ítem e Equipamento, sem "+ Inserir compatível"
 // v5.16.2 - "+ Inserir compatível" aceita código 9 com 8 dígitos (Consolidado v4.11)
 // v5.16.1 - Código 9 com 8 dígitos não fica mais vermelho (Consulta e Cadastro)
@@ -33,7 +34,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.17.0";
+const APP_VERSION = "v5.18.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2178,7 +2179,43 @@ async function substituirFotoLinhaUI() {
    Upload Foto (POST text/plain)
 ========================= */
 
+// Foto maior que Full HD: reduz no próprio celular para FOTO_LADO_MENOR no lado menor, mesma proporção, JPEG.
+// O navegador já aplica a rotação EXIF ao desenhar. Qualquer falha → envia o arquivo original (como antes).
+const FOTO_LADO_MENOR = 1080;
+const FOTO_QUALIDADE = 0.85;
+
+async function reduzirFoto(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const escala = FOTO_LADO_MENOR / Math.min(w, h);
+    if (!w || !h || escala >= 1) return file;   // já é Full HD ou menor
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * escala);
+    canvas.height = Math.round(h * escala);
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", FOTO_QUALIDADE));
+    canvas.width = canvas.height = 0;            // libera a memória (iPhone/Android fraco)
+    if (!blob || blob.size >= file.size) return file;
+
+    logDebug(`Foto reduzida: ${w}x${h} ${file.size} B → ${Math.round(w * escala)}x${Math.round(h * escala)} ${blob.size} B`);
+    return blob;
+  } catch (e) {
+    logDebug("Redução da foto falhou, enviando o original: " + e);
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function uploadFotoParaLinha(row, slot, file) {
+  file = await reduzirFoto(file);
   const base64 = await new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => {
