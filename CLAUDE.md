@@ -39,9 +39,13 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   exige "CONFIRMO" e fica marcado em ALERTA.
   Inclusão (peça adicional/opcional comprado) = linha sem CODIGO9/ID ANTIGO e ALERTA começando com "INCLUSÃO";
   ela entra na posição do GT e pode ser substituída depois por outro ajuste.
+  Coluna M "CODIGO C NOVO" = desenho da peça nova (substituição de outro desenho → o Código C informado e
+  gravado também como compatível da posição na RELAÇÃO; mesmo desenho/inclusão → o da posição).
 - Compatíveis inseridos pelo app (Equipamento → "+ Inserir compatível"): o usuário digita código 9 ou Código C;
   o script converte pela MachineCards e grava sempre o Código C padronizado na 1ª coluna COMPATÍVEL vazia (C–F)
   da linha da peça (aba do modelo na RELAÇÃO), com nota de quem/quando. Código só de outro modelo exige CONFIRMO.
+  Código que não está na MachineCards não entra pelo botão ("Necessário um novo cadastro de peça"): entra pelo
+  Cadastro → ajuste, respondendo que a peça é de outro desenho compatível.
 
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
