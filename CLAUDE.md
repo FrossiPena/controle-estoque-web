@@ -70,7 +70,7 @@ Modos do `doGet`:
 - `inventario.gs`: diag, login, diag_drive, log_mov, get_lin, ultimo_inv, lista_inv, inv_resumo, ultimo_numinv,
   clear_lin; `doPost` upload_foto (slot 1..4 → colunas I..L).
 - `consolidado.gs`: diag, login, gruas_lista, gts_por_grua, gts_todos, lancas_grua (`todas=1` = todas as peças),
-  h_por_l, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, machinecards_por_gt (já aplica AJUSTE/inclusões),
+  h_por_l, gruas (diretos pela MachineCards + `compat` pela linha da RELAÇÃO + `ajustes`), exata, patrimonio_por_h, i_por_h, desc_pt, machinecards_por_gt (já aplica AJUSTE/inclusões),
   compat_previa, compat_inserir, verificar_peca, gravar_ajuste (`tipo=inclusao`; `compat=1` + `codigo_c_novo`).
 
 ## Testes (rodar antes de publicar)

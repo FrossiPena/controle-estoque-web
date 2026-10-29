@@ -98,6 +98,18 @@ const servidor = http.createServer((req, res) => {
     await page.waitForFunction(() => /Machine Card/.test(document.querySelector(".eq-compat-msg")?.textContent || ""));
     console.log("ok - compatível sem machine card pede novo cadastro");
 
+    // F) Consulta: gruas aplicáveis com compatíveis e ajuste
+    await page.evaluate(() => showScreen("consulta"));
+    await page.fill("#campo1", "146000042"); await page.fill("#campo2", "");
+    await page.click("#btn-consultar-consulta");
+    await page.waitForFunction(() => /Compatíveis/.test(document.getElementById("gruas-aplicaveis").value));
+    assert.match(await page.inputValue("#gruas-aplicaveis"), /Aplicações \(M\): GT-26\nCompatíveis: GT-09 → C051.001-631.111/);
+    await page.fill("#campo1", "958152101");
+    await page.click("#btn-consultar-consulta");
+    await page.waitForFunction(() => /Por ajuste/.test(document.getElementById("gruas-aplicaveis").value));
+    assert.match(await page.inputValue("#gruas-aplicaveis"), /Por ajuste: GT-13 \(inclusão\)/);
+    console.log("ok - Consulta mostra compatíveis e ajustes");
+
     assert.deepStrictEqual(erros, [], "erros de JavaScript na página");
     console.log("\nnavegador OK");
   } finally {

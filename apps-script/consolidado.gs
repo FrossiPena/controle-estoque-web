@@ -1,4 +1,7 @@
-// v4.9 - Consolidado WebApp
+// v4.10 - Consolidado WebApp
+// mode=gruas também traz os GTs que usam a peça por compatibilidade (mesma linha da RELAÇÃO: CÓDIGO LBR +
+//   COMPATÍVEL 1..4 → GTs da MachineCards com o código compatível) e por ajuste (aba AJUSTE).
+// v4.9
 // Ajuste (substituição) pode criar o compatível junto: compat=1 + codigo_c_novo grava o Código C na 1ª coluna
 //   COMPATÍVEL vazia da posição (RELAÇÃO). AJUSTE ganha a coluna M "CODIGO C NOVO" (desenho da peça nova;
 //   sem compatível = o da posição). Compatível pelo botão sem machine card: mensagem pede novo cadastro de peça.
@@ -29,7 +32,7 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.9";
+const SCRIPT_VERSION = "v4.10";
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
@@ -210,7 +213,68 @@ function doGet(e) {
     const unicosC = listaC.filter(x => seenC[x] ? false : (seenC[x]=true));
     const unicosM = listaM.filter(x => seenM[x] ? false : (seenM[x]=true));
 
-    return json({ ok:true, version: SCRIPT_VERSION, gruasC: unicosC, gruasM: unicosM });
+    const extra = gruasCompat_(normCod_(codigoH), unicosM);
+    return json({ ok:true, version: SCRIPT_VERSION, gruasC: unicosC, gruasM: unicosM, compat: extra.compat, ajustes: extra.ajustes });
+  }
+
+  // GTs que usam a peça por compatibilidade ou por ajuste (além dos diretos, coluna M).
+  // Compatíveis: códigos da mesma linha da RELAÇÃO (CÓDIGO LBR + COMPATÍVEL 1..4) na aba do modelo dos GTs
+  // diretos → GTs da MachineCards com esses Códigos C. Ajustes: aba AJUSTE com este código 9 como peça nova
+  // (ou com um desenho compatível como CODIGO C NOVO).
+  function gruasCompat_(c9, gtsDiretos) {
+    const diretos = new Set(gtsDiretos.map(normNome_));
+    const minhas = new Set();
+    for (let i = 1; i < data.length; i++) {
+      if (normCod_(data[i][H]) === c9 && chaveCodigoC_(data[i][L])) minhas.add(chaveCodigoC_(data[i][L]));
+    }
+    const ajustesC9 = lerAjustes_(ss);
+    ajustesC9.forEach(a => { if (a.c9Novo === c9 && chaveCodigoC_(a.codigoCNovo || a.posicao)) minhas.add(chaveCodigoC_(a.codigoCNovo || a.posicao)); });
+
+    const modeloDe = {};
+    gtModelos_().forEach(x => { modeloDe[normNome_(x.gt)] = x.modelo; });
+    const modelos = new Set(gtsDiretos.map(g => modeloDe[normNome_(g)]).filter(Boolean));
+    ajustesC9.forEach(a => { if (a.c9Novo === c9 && a.modelo) modelos.add(a.modelo); });
+
+    const grupo = new Set();
+    if (minhas.size && modelos.size) {
+      const rel = SpreadsheetApp.openById(RELACAO_SHEET_ID);
+      modelos.forEach(mod => {
+        const sh = abaPorNome_(rel, mod);
+        if (!sh || sh.getLastRow() < 3) return;
+        const vals = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+        const cab = vals[0].map(v => normNome_(v));
+        const cols = cab.map((h, i) => (h === normNome_("CÓDIGO LBR") || /^compat/.test(h)) ? i : -1).filter(i => i >= 0);
+        vals.slice(1).forEach(r => {
+          const cods = cols.map(i => chaveCodigoC_(r[i])).filter(Boolean);
+          if (cods.some(c => minhas.has(c))) cods.forEach(c => { if (!minhas.has(c)) grupo.add(c); });
+        });
+      });
+    }
+
+    const compat = [], visto = {};
+    const addCompat = (gt, chave, codigo9, ajuste) => {
+      const k = normNome_(gt) + "|" + chave;
+      if (!gt || diretos.has(normNome_(gt)) || visto[k]) return;
+      visto[k] = 1;
+      compat.push(Object.assign({ gt, codigoC: formataCodigoC_(chave), codigo9 }, ajuste ? { ajuste: true } : {}));
+    };
+    for (let i = 1; i < data.length; i++) {
+      const ch = chaveCodigoC_(data[i][L]);
+      if (grupo.has(ch)) addCompat(String(data[i][M] || "").trim(), ch, normNumberish(data[i][H]), false);
+    }
+
+    const ajustes = [], vistoAj = {};
+    ajustesC9.forEach(a => {
+      const ch = chaveCodigoC_(a.codigoCNovo || a.posicao);
+      if (a.c9Novo === c9) {
+        if (diretos.has(normNome_(a.gt)) || vistoAj[normNome_(a.gt)]) return;
+        vistoAj[normNome_(a.gt)] = 1;
+        ajustes.push({ gt: a.gt, posicao: a.posicao, inclusao: !a.idAntigo });
+      } else if (grupo.has(ch)) {
+        addCompat(a.gt, ch, a.c9Novo, true);
+      }
+    });
+    return { compat, ajustes };
   }
 
   // mode=exata (H&K->M)

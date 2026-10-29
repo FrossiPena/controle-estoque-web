@@ -1,3 +1,5 @@
+// v5.16.0 - Consulta: "Gruas aplicáveis" mostra também os GTs com peça compatível (GT → Código C usado)
+//          e os que receberam a peça por ajuste (inclusão/substituição)
 // v5.15.0 - Ajuste (substituição): pergunta se a peça é de outro desenho compatível; se sim, pede o Código C
 //          (pré-preenchido quando conhecido) e grava o compatível junto com o ajuste
 // v5.14.0 - Equipamento: "+ Inserir compatível" em cada item (código 9 ou C → confere descrições da
@@ -28,7 +30,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.15.0";
+const APP_VERSION = "v5.16.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -818,8 +820,20 @@ function consultarDados() {
       const linhas = [];
       if (listaC.length) linhas.push(`Modelos (C): ${listaC.join(", ")}`);
       if (listaM.length) linhas.push(`Aplicações (M): ${listaM.join(", ")}`);
+      // Compatíveis: uma linha por código compatível, com os GTs que o usam
+      const porCodigo = {};
+      (Array.isArray(j.compat) ? j.compat : []).forEach(x => {
+        (porCodigo[x.codigoC] = porCodigo[x.codigoC] || []).push(x.gt + (x.ajuste ? " (ajuste)" : ""));
+      });
+      Object.keys(porCodigo).forEach(c => linhas.push(`Compatíveis: ${porCodigo[c].join(", ")} → ${c}`));
+      const ajustes = Array.isArray(j.ajustes) ? j.ajustes : [];
+      if (ajustes.length) {
+        linhas.push(`Por ajuste: ${ajustes.map(a => `${a.gt} (${a.inclusao ? "inclusão" : "substituição"})`).join(", ")}`);
+      }
       const texto = linhas.length ? linhas.join("\n") : "Não encontrado";
-      document.getElementById("gruas-aplicaveis").value = texto;
+      elGruas.value = texto;
+      elGruas.style.height = "auto";                       // cresce com as linhas (e quebras no celular)
+      elGruas.style.height = (elGruas.scrollHeight + 2) + "px";
     } else {
       document.getElementById("gruas-aplicaveis").value = "Não encontrado";
     }
