@@ -1,3 +1,5 @@
+// v5.14.0 - Equipamento: "+ Inserir compatível" em cada item (código 9 ou C → confere descrições da
+//          MachineCards → grava o Código C na RELAÇÃO; outro modelo pede CONFIRMO)
 // v5.13.0 - Ajuste: inclusão de peça adicional (opcional comprado), sem ID de fábrica substituído;
 //          Equipamento mostra peças incluídas com a etiqueta INCLUSÃO
 // v5.12.0 - Ajuste de machine card: após Registrar, confere código 9 + ID na MachineCards; se não existe,
@@ -24,7 +26,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.13.0";
+const APP_VERSION = "v5.14.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -1150,11 +1152,133 @@ function renderListaEq() {
     }
     idsTotal += Math.max(totalNoItem, qtd); idsOk += okNoItem;
     card.appendChild(ids);
+
+    const btnCompat = document.createElement("button");
+    btnCompat.type = "button";
+    btnCompat.className = "eq-compat-btn";
+    btnCompat.textContent = "+ Inserir compatível";
+    btnCompat.addEventListener("click", () => abrirCompatEq(card, it, grua, gt));
+    card.appendChild(btnCompat);
     ul.appendChild(card);
   });
 
   titulo.textContent = `${grua} · ${gt} · ${lanca}: ${itens.length} itens` +
     (conferindo ? ` · inventariados ${idsOk} de ${idsTotal} peças` : "");
+}
+
+/* =========================
+   EQUIPAMENTO: inserir compatível (painel dentro do item, em 2 passos)
+   1) código 9 ou C → valida formato e busca na MachineCards (compat_previa)
+   2) mostra a descrição (coluna I) do original e do novo para conferir → grava (compat_inserir)
+========================= */
+
+function formatoCodigoOk(entrada) {
+  const d = String(entrada || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  return /^\d{9}$/.test(d) || /^C?\d{12}$/.test(d);
+}
+
+function eqEl(tag, cls, texto) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto != null) e.textContent = texto;
+  return e;
+}
+
+function abrirCompatEq(card, it, grua, gt) {
+  document.querySelectorAll(".eq-compat-painel").forEach(p => p.remove());
+  const painel = eqEl("div", "eq-compat-painel");
+  card.appendChild(painel);
+  const titulo = `${it.descricao}${it.tamanho ? ` · ${it.tamanho}` : ""}`;
+
+  const passo1 = (valor) => {
+    painel.replaceChildren();
+    painel.appendChild(eqEl("label", "campo-label", `Código 9 ou Código C compatível com ${titulo}`));
+    const inp = eqEl("input"); inp.type = "text"; inp.value = valor || "";
+    inp.placeholder = "ex.: 146000099 ou C051.001-631.111"; inp.autocapitalize = "characters";
+    painel.appendChild(inp);
+    const msg = eqEl("p", "eq-compat-msg");
+    const acoes = eqEl("div", "eq-compat-acoes");
+    const bIns = eqEl("button", "eq-compat-ok", "Inserir"); bIns.type = "button";
+    const bCan = eqEl("button", "", "Cancelar"); bCan.type = "button";
+    acoes.append(bIns, bCan);
+    painel.append(msg, acoes);
+    inp.focus();
+    bCan.addEventListener("click", () => painel.remove());
+    bIns.addEventListener("click", async () => {
+      const entrada = inp.value.trim();
+      if (!formatoCodigoOk(entrada)) {
+        msg.textContent = "Formato inválido: código 9 = 9 dígitos; Código C = C + 12 dígitos (ex.: C051.001-631.111).";
+        return;
+      }
+      bIns.disabled = true; msg.textContent = "Buscando na MachineCards…";
+      try {
+        const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=compat_previa&grua=${encodeURIComponent(grua)}&gt=${encodeURIComponent(gt)}` +
+          `&codigo=${encodeURIComponent(it.codigo)}&entrada=${encodeURIComponent(entrada)}&t=${Date.now()}`);
+        if (!(j && j.ok)) { msg.textContent = (j && j.error) || "Erro ao consultar (ver Debug)."; bIns.disabled = false; return; }
+        passo2(entrada, j);
+      } catch (err) {
+        logDebug("Erro compat_previa: " + err);
+        msg.textContent = "Erro ao consultar (ver Debug)."; bIns.disabled = false;
+      }
+    });
+  };
+
+  const bloco = (rotulo, linha1, info) => {
+    const b = eqEl("div", "eq-compat-bloco");
+    b.appendChild(eqEl("div", "eq-compat-rotulo", rotulo));
+    if (linha1) b.appendChild(eqEl("div", "", linha1));
+    b.appendChild(eqEl("div", "", "Descrição (machine card): " + (info && info.descricao ? info.descricao : "—")));
+    b.appendChild(eqEl("div", "eq-item-codigo", info ? `Código 9: ${info.codigo9 || "—"} · Código C: ${info.codigoC || "—"}`
+                                                      : "Sem machine card para esta peça"));
+    return b;
+  };
+
+  const passo2 = (entrada, j) => {
+    painel.replaceChildren();
+    painel.appendChild(eqEl("p", "eq-compat-titulo", "Confira se a descrição de machine card é compatível"));
+    painel.appendChild(bloco("Original", "Descrição português: " + titulo, j.original || { codigoC: it.codigo }));
+    painel.appendChild(bloco("Novo", "Você digitou: " + entrada, j.novo));
+    let conf = null;
+    if (j.alerta) {
+      const al = eqEl("div", "aj-alerta");
+      al.appendChild(eqEl("p", "", "⚠ " + j.alerta + ". A intercambiabilidade entre modelos é baixa. Tem certeza?"));
+      al.appendChild(eqEl("label", "campo-label", "Para continuar, digite CONFIRMO"));
+      conf = eqEl("input"); conf.type = "text"; conf.autocapitalize = "characters";
+      al.appendChild(conf);
+      painel.appendChild(al);
+    }
+    const msg = eqEl("p", "eq-compat-msg");
+    const acoes = eqEl("div", "eq-compat-acoes");
+    const bIns = eqEl("button", "eq-compat-ok", "Inserir"); bIns.type = "button";
+    const bCan = eqEl("button", "", "Cancelar"); bCan.type = "button";
+    acoes.append(bIns, bCan);
+    painel.append(msg, acoes);
+    const habilita = () => { bIns.disabled = !!conf && conf.value.trim().toUpperCase() !== "CONFIRMO"; };
+    if (conf) conf.addEventListener("input", habilita);
+    habilita();
+    bCan.addEventListener("click", () => painel.remove());
+    bIns.addEventListener("click", async () => {
+      bIns.disabled = true; msg.textContent = "Gravando na RELAÇÃO…";
+      try {
+        const r = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=compat_inserir&grua=${encodeURIComponent(grua)}&gt=${encodeURIComponent(gt)}` +
+          `&codigo=${encodeURIComponent(it.codigo)}&entrada=${encodeURIComponent(entrada)}` +
+          `&confirmacao=${encodeURIComponent(conf ? conf.value.trim() : "")}&t=${Date.now()}`);
+        if (r && r.ok && r.gravado) {
+          it.compat = (it.compat || []).concat(r.codigoC);   // vale na hora (mesmo objeto da lista em cache)
+          renderListaEq();
+          eqStatus(`✓ ${r.codigoC} incluído como compatível de ${titulo} (RELAÇÃO, linha ${r.linha}).`);
+          return;
+        }
+        msg.textContent = (r && (r.error || r.alerta)) || "Não gravado (ver Debug).";
+      } catch (err) {
+        logDebug("Erro compat_inserir: " + err);
+        msg.textContent = "Erro ao gravar (ver Debug).";
+      }
+      habilita();
+    });
+  };
+
+  passo1("");
 }
 
 /* =========================

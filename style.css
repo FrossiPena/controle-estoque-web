@@ -1,4 +1,4 @@
-/* style_v5.13.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.14.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -430,3 +430,14 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .eq-id-antigo{ color: #6b7280; text-decoration: line-through; background: #f3f4f6; }
 .eq-tag-ajuste{ margin-left: 4px; padding: 1px 5px; border-radius: 4px; background: #7c3aed; color: #fff; font-size: 10px; font-weight: 700; text-decoration: none; }
 .aj-opcao-inclusao{ border-style: dashed; }
+
+/* Equipamento: inserir compatível */
+.eq-compat-btn{ margin-top: 6px; padding: 4px 8px; font-size: 12px; background: #fff; border: 1px dashed #94a3b8; color: #334155; }
+.eq-compat-painel{ margin-top: 8px; padding: 10px; border-radius: 8px; background: #fff; border: 1px solid #93c5fd; }
+.eq-compat-titulo{ margin: 0 0 6px; font-weight: 700; }
+.eq-compat-bloco{ margin: 6px 0; padding: 8px; border-radius: 6px; background: #f8fafc; border: 1px solid #e2e8f0; }
+.eq-compat-rotulo{ font-weight: 700; font-size: 12px; text-transform: uppercase; opacity: .7; }
+.eq-compat-msg{ margin: 6px 0 0; min-height: 16px; color: #b45309; font-weight: 700; font-size: 12px; }
+.eq-compat-acoes{ display: flex; gap: 8px; margin-top: 6px; }
+.eq-compat-acoes button{ flex: 1; }
+.eq-compat-ok{ background: #2563eb; color: #fff; }
