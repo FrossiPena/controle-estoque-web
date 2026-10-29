@@ -1,3 +1,4 @@
+// v5.16.1 - Código 9 com 8 dígitos não fica mais vermelho (Consulta e Cadastro)
 // v5.16.0 - Consulta: "Gruas aplicáveis" mostra também os GTs com peça compatível (GT → Código C usado)
 //          e os que receberam a peça por ajuste (inclusão/substituição)
 // v5.15.0 - Ajuste (substituição): pergunta se a peça é de outro desenho compatível; se sim, pede o Código C
@@ -30,7 +31,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.16.0";
+const APP_VERSION = "v5.16.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -118,7 +119,7 @@ function setCampo1Classes(el, valor) {
   if (!el) return;
   el.classList.remove("campo1-ok", "campo1-bad");
   const len = (String(valor || "").trim()).length;
-  if (len === 9) el.classList.add("campo1-ok");
+  if (len === 8 || len === 9) el.classList.add("campo1-ok");   // código 9 antigo pode ter 8 dígitos
   else el.classList.add("campo1-bad");
 }
 
