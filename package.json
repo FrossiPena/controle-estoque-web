@@ -1,0 +1,13 @@
+{
+  "name": "controle-estoque-web",
+  "private": true,
+  "description": "Testes locais do app (o site em si não usa npm)",
+  "scripts": {
+    "test": "node testes/consolidado.test.js && node testes/navegador.test.js",
+    "test:script": "node testes/consolidado.test.js",
+    "test:navegador": "node testes/navegador.test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
