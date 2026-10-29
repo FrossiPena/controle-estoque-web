@@ -1,4 +1,7 @@
-// v4.6 - Consolidado WebApp
+// v4.7 - Consolidado WebApp
+// FIX AJUSTE: se a aba já existia sem cabeçalho, o ajuste ia para a linha 1 e a leitura (que começava na 2)
+//   não o via. Agora a gravação garante o cabeçalho na linha 1 e a leitura começa na 1, pulando o cabeçalho.
+// v4.6
 // Inclusão: ajuste sem ID antigo (peça adicional/opcional comprada para o GT). ALERTA começa com "INCLUSÃO".
 //   machinecards_por_gt traz as inclusões na posição; uma peça incluída também pode ser substituída depois.
 // v4.5
@@ -18,7 +21,7 @@
 // Modos: diag, login, gruas, exata, patrimonio_por_h, i_por_h, desc_pt, h_por_l,
 //        gruas_lista, gts_por_grua, lancas_grua, machinecards_por_gt
 
-const SCRIPT_VERSION = "v4.6";
+const SCRIPT_VERSION = "v4.7";
 const TZ = "America/Sao_Paulo";
 const AJUSTE_ABA = "AJUSTE";
 const AJUSTE_CAB = ["DATAHORA", "USUARIO", "GT", "MODELO", "POSICAO (CODIGO C)", "DESCRICAO",
@@ -450,30 +453,37 @@ function gtModelos_() {
   return out;
 }
 
+// criar=true (gravação): cria a aba se faltar e garante o cabeçalho na linha 1, mesmo numa aba
+// que já existia vazia ou com dados sem cabeçalho (nesse caso insere uma linha acima)
 function abaAjuste_(ss, criar) {
   let sh = ss.getSheetByName(AJUSTE_ABA);
-  if (!sh && criar) {
-    sh = ss.insertSheet(AJUSTE_ABA);
+  if (!sh && criar) sh = ss.insertSheet(AJUSTE_ABA);
+  if (sh && criar && !ehCabecalhoAjuste_(sh.getRange(1, 1).getValue())) {
+    if (sh.getLastRow() > 0) sh.insertRowBefore(1);
     sh.getRange(1, 1, 1, AJUSTE_CAB.length).setValues([AJUSTE_CAB]).setFontWeight("bold");
     sh.setFrozenRows(1);
   }
   return sh;
 }
 
+function ehCabecalhoAjuste_(v) {
+  return normNome_(v) === normNome_(AJUSTE_CAB[0]);
+}
+
 // Linhas da aba AJUSTE (ordem da planilha: a última de cada ID de fábrica é a vigente)
 function lerAjustes_(ss) {
   const sh = abaAjuste_(ss, false);
-  if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, AJUSTE_CAB.length).getValues()
-    .map((r, i) => ({
-      linha: i + 2,
+  if (!sh || sh.getLastRow() < 1) return [];
+  return sh.getRange(1, 1, sh.getLastRow(), AJUSTE_CAB.length).getValues()
+    .map((r, i) => ehCabecalhoAjuste_(r[0]) ? null : ({
+      linha: i + 1,
       data: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, "yyyy-MM-dd HH:mm") : String(r[0] || ""),
       usuario: String(r[1] || ""), gt: String(r[2] || "").trim(), modelo: String(r[3] || "").trim(),
       posicao: String(r[4] || "").trim(), descricao: String(r[5] || "").trim(),
       c9Antigo: normCod_(r[6]), idAntigo: normCod_(r[7]), c9Novo: normCod_(r[8]), idNovo: normCod_(r[9]),
       alerta: String(r[10] || "").trim()
     }))
-    .filter(a => a.gt && a.idNovo);   // idAntigo vazio = inclusão
+    .filter(a => a && a.gt && a.idNovo);   // null = cabeçalho; idAntigo vazio = inclusão
 }
 
 function abaPorNome_(ss, nome) {
