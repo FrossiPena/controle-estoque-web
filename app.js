@@ -1,3 +1,5 @@
+// v5.19.0 - Migração para o Supabase, fase 1 (alimentação dupla): o que o Apps Script grava com sucesso
+//          também vai para a função "espelho" do Supabase; falha lá não atrapalha (Debug + rodapé)
 // v5.18.0 - Fotos maiores que Full HD são reduzidas no celular antes do envio (1080 no lado menor, JPEG 0,85)
 // v5.17.0 - Usuário "consulta" (login genérico): menu só com Consulta ítem e Equipamento, sem "+ Inserir compatível"
 // v5.16.2 - "+ Inserir compatível" aceita código 9 com 8 dígitos (Consolidado v4.11)
@@ -34,13 +36,21 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.18.0";
+const APP_VERSION = "v5.19.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
 
 const ENDPOINT_REGISTRO =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxClcs2PLsAt7RjwMxV-ThLMVevpPesjnyH1rDrse6ORbPNgbP4-xAOSuq5O1xIWZ2j/exec";
+
+// Supabase (migração, fase 1): gravações aceitas pelo Apps Script são repetidas na função "espelho".
+// false = desliga o espelho (o app volta a usar só o Google).
+const ESPELHO_SUPABASE = true;
+const SUPABASE_URL = "https://xmrkwychewovxqsvqxxk.supabase.co";
+const SUPABASE_CHAVE = "sb_publishable_J7TEpA4OOKxJs6RRiil4yg_pTzDPMp8"; // chave pública (publishable)
+const SUPABASE_EMAIL_DOMINIO = "estoque.realguindastes.com";            // usuário "fernando" = fernando@…
+const ESPELHO_TIMEOUT_MS = 20000;
 
 let html5QrCode;
 let scannerRunning = false;
@@ -211,6 +221,7 @@ function mostrarLogin(msg) {
 
 function sair(msg) {
   AUTH = { user:"", pass:"" };
+  SB.token = "";
   try { localStorage.removeItem(AUTH_KEY); } catch {}
   atualizarUsuarioUI();
   closeMenu();
@@ -293,12 +304,13 @@ function respostaOk(resp, raw) {
 
 // fetch com sinal; retorna { resp, raw } (o texto completo da resposta).
 // tempoMs: se informado, desiste depois desse tempo e lança erro "TempoEsgotado".
-async function netFetch(url, opts, tempoMs) {
-  netInicio();
+// semSinal: não mexe no sinal do topo (espelho do Supabase: falha lá não pode parecer que o registro falhou)
+async function netFetch(url, opts, tempoMs, semSinal) {
+  if (!semSinal) netInicio();
   let ok = false, prazo = 0, timer = null;
   const ctrl = tempoMs ? new AbortController() : null;
   if (ctrl) {
-    prazo = prazoInicio(tempoMs);
+    if (!semSinal) prazo = prazoInicio(tempoMs);
     timer = setTimeout(() => ctrl.abort(), tempoMs);
   }
   try {
@@ -308,7 +320,7 @@ async function netFetch(url, opts, tempoMs) {
     return { resp, raw };
   } catch (err) {
     if (ctrl && ctrl.signal.aborted) {
-      NET.tempoEsgotado = true;
+      if (!semSinal) NET.tempoEsgotado = true;
       const e = new Error(`Tempo esgotado (${Math.round(tempoMs / 1000)}s)`);
       e.name = "TempoEsgotado";
       throw e;
@@ -317,7 +329,7 @@ async function netFetch(url, opts, tempoMs) {
   } finally {
     if (timer) clearTimeout(timer);
     if (prazo) prazoFim(prazo);
-    netFim(ok);
+    if (!semSinal) netFim(ok);
   }
 }
 
@@ -354,6 +366,9 @@ async function fazerLogin(ev) {
       document.getElementById("login-screen").hidden = true;
       if (st) st.innerText = "";
       logDebug(`Login OK: ${user}`);
+      if (ESPELHO_SUPABASE && !ehUsuarioConsulta()) {
+        sbEntrar().then(() => logDebug("Supabase: login OK")).catch(e => logDebug("Supabase: " + (e.message || e)));
+      }
     } else {
       AUTH = { user:"", pass:"" };
       if (st) st.innerText = (oks[0] || oks[1])
@@ -370,23 +385,78 @@ async function fazerLogin(ev) {
 
 carregarAuth();
 
+/* =========================
+   SUPABASE: alimentação dupla (fase 1 da migração)
+   O Google continua sendo o principal. Depois que o Apps Script confirma uma gravação, o mesmo registro
+   vai para a função "espelho" (mesmo número de linha). Falha no Supabase só aparece no Debug e no rodapé.
+   Login: mesmo usuário/senha no Supabase Auth (e-mail usuario@SUPABASE_EMAIL_DOMINIO); token só na memória.
+========================= */
+
+const SB = { token: "", expira: 0, falhas: 0 };
+
+async function sbEntrar() {
+  SB.token = "";
+  const email = `${AUTH.user.trim().toLowerCase()}@${SUPABASE_EMAIL_DOMINIO}`;
+  const { resp, raw } = await netFetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_CHAVE, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: AUTH.pass })
+  }, ESPELHO_TIMEOUT_MS, true);
+  let j = null; try { j = JSON.parse(raw); } catch {}
+  if (!resp.ok || !j || !j.access_token) {
+    throw new Error("login no Supabase recusado: " + ((j && (j.msg || j.error_description || j.error)) || `HTTP ${resp.status}`));
+  }
+  SB.token = j.access_token;
+  SB.expira = Date.now() + ((Number(j.expires_in) || 3600) - 60) * 1000;
+}
+
+async function espelhoPost(modo, dados) {
+  if (!SB.token || Date.now() > SB.expira) await sbEntrar();
+  const { raw } = await netFetch(`${SUPABASE_URL}/functions/v1/espelho`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SB.token}`, apikey: SUPABASE_CHAVE, "Content-Type": "application/json" },
+    body: JSON.stringify(Object.assign({ modo }, dados))
+  }, ESPELHO_TIMEOUT_MS, true);
+  let j = null; try { j = JSON.parse(raw); } catch {}
+  return j || { ok: false, error: "resposta inválida: " + String(raw).slice(0, 200) };
+}
+
+// Chamar só depois que o Apps Script confirmou a gravação. Não é esperado pela tela e nunca lança erro.
+function espelhar(modo, dados) {
+  if (!ESPELHO_SUPABASE || ehUsuarioConsulta()) return Promise.resolve();
+  return (async () => {
+    try {
+      let j = await espelhoPost(modo, dados);
+      if (j.auth === false) { SB.token = ""; j = await espelhoPost(modo, dados); } // token vencido: entra de novo
+      if (!j.ok) throw new Error(j.error || "ok:false");
+      logDebug(`Supabase ${modo}: ${j.detalhe || "ok"}`);
+    } catch (err) {
+      SB.falhas++;
+      logDebug(`Supabase ${modo} FALHOU: ${(err && err.message) || err}`);
+      atualizarRodapeVersao();
+    }
+  })();
+}
+
 // Rodapé: mostra a versão do app.js; se o index.html for de outra versão, há arquivo antigo em cache
 function atualizarRodapeVersao() {
   const el = document.getElementById("app-footer");
   if (!el) return;
   const versaoHtml = document.querySelector('meta[name="app-version"]')?.content || "";
+  const espelho = SB.falhas ? ` · Supabase: ${SB.falhas} falha${SB.falhas > 1 ? "s" : ""} (ver Debug)` : "";
   if (versaoHtml && versaoHtml !== APP_VERSION) {
-    el.textContent = `Controle de Estoque · ${APP_VERSION} · página ${versaoHtml}: recarregue para atualizar`;
+    el.textContent = `Controle de Estoque · ${APP_VERSION} · página ${versaoHtml}: recarregue para atualizar${espelho}`;
     el.classList.add("app-footer-aviso");
     logDebug(`Versões diferentes: index.html=${versaoHtml}, app.js=${APP_VERSION}`);
   } else {
-    el.textContent = `Controle de Estoque · ${APP_VERSION}`;
+    el.textContent = `Controle de Estoque · ${APP_VERSION}${espelho}`;
   }
 }
 
 logDebug(`Carregado app.js versão ${APP_VERSION}`);
 logDebug(`ENDPOINT_CONSULTA: ${ENDPOINT_CONSULTA}`);
 logDebug(`ENDPOINT_REGISTRO: ${ENDPOINT_REGISTRO}`);
+logDebug(`Espelho Supabase: ${ESPELHO_SUPABASE ? SUPABASE_URL : "desligado"}`);
 
 window.addEventListener("DOMContentLoaded", () => {
 
@@ -1296,6 +1366,8 @@ function abrirCompatEq(card, it, grua, gt) {
           `&codigo=${encodeURIComponent(it.codigo)}&entrada=${encodeURIComponent(entrada)}` +
           `&confirmacao=${encodeURIComponent(conf ? conf.value.trim() : "")}&t=${Date.now()}`);
         if (r && r.ok && r.gravado) {
+          espelhar("compat", { grua, gt, linha: r.linha, coluna: r.coluna, codigoC: r.codigoC, entrada,
+                               alerta: (j && j.alerta) || "" });
           it.compat = (it.compat || []).concat(r.codigoC);   // vale na hora (mesmo objeto da lista em cache)
           renderListaEq();
           eqStatus(`✓ ${r.codigoC} incluído como compatível de ${titulo} (RELAÇÃO, linha ${r.linha}).`);
@@ -1632,6 +1704,12 @@ async function gravarAjuste() {
   try {
     const j = await eqGetJson(`${ENDPOINT_CONSULTA}?${p.toString()}`);
     if (j && j.ok && j.gravado) {
+      espelhar("ajuste", {
+        linha: j.linha, gt: AJ.gt, modelo: AJ.modelo, posicao: p.get("posicao"), descricao: p.get("descricao"),
+        c9_antigo: p.get("c9_antigo"), id_antigo: p.get("id_antigo"), c9_novo: AJ.c9, id_novo: AJ.id,
+        alerta: j.alerta || "", obs: p.get("obs"), codigo_c_novo: j.codigoCNovo || "",
+        compat: j.compat && j.compat.gravado ? { linha: j.compat.linha, codigoC: j.compat.codigoC } : null
+      });
       delete EQ.mcPorGt[AJ.gt];          // Equipamento passa a mostrar o ajuste
       const oque = inclusao ? `incluída como peça adicional` : `substitui o ID ${AJ.fab.id}`;
       const comp = j.compat ? (j.compat.gravado ? ` Compatível ${j.compat.codigoC} gravado na RELAÇÃO.`
@@ -2013,6 +2091,7 @@ async function registrarMovimentacao() {
     if (j && j.ok && j.appended) {
       if (status) status.innerText = `Registrado com sucesso (linha ${j.row} em ${j.sheet} às ${j.dataHora}).`;
       logDebug(`Registro OK: row=${j.row} dataHora=${j.dataHora}`);
+      espelhar("log_mov", { row: j.row, dataHora: j.dataHora, campo1, campo2, loc, rua, andar, gps: gpsString, numInv, obs });
       carregarUltimoNumInv();
 
       const inpLinha = document.getElementById("linha_consulta");
@@ -2134,6 +2213,7 @@ async function deletarLinhaInventarioUI() {
     let j=null; try{ j=JSON.parse(raw); }catch{}
 
     if (j && j.ok && j.cleared) {
+      espelhar("clear_lin", { row });
       if (txt) txt.value = `Linha ${row} limpa com sucesso.`;
       atualizarBotoesFotos({ fotoUrl:"", fotoUrl2:"", fotoUrl3:"", fotoUrl4:"" });
     } else {
@@ -2259,5 +2339,6 @@ async function uploadFotoParaLinha(row, slot, file) {
   if (!(j && j.ok && j.fotoUrl)) {
     throw new Error("upload_foto: resposta inválida/sem ok");
   }
+  espelhar("foto_link", { row: j.row, slot: j.slot, fotoUrl: j.fotoUrl }); // a foto fica no Drive: só o link
   return j;
 }

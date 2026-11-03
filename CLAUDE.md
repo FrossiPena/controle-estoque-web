@@ -2,6 +2,7 @@
 
 App web estático (`index.html`, `app.js`, `style.css`) publicado pelo GitHub Pages a partir do `main`,
 com dois Google Apps Scripts como backend (`apps-script/inventario.gs` e `apps-script/consolidado.gs`).
+Migração para o Supabase em andamento (ver seção Supabase e `migracao/README.md`).
 Textos, comentários e mensagens de commit em português.
 
 ## Como trabalhar com o usuário
@@ -54,6 +55,21 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   Código que não está na MachineCards não entra pelo botão ("Necessário um novo cadastro de peça"): entra pelo
   Cadastro → ajuste, respondendo que a peça é de outro desenho compatível.
 
+## Supabase (migração, fase 1: alimentação dupla)
+- Objetivo: sair do Google; o Postgres vira a fonte única no corte. Agora o Google continua sendo o principal e os
+  **Apps Scripts não mudam**: o app grava no Apps Script e, só se deu certo, repete no Supabase (`espelhar(modo, dados)`
+  em `app.js`; `ESPELHO_SUPABASE` liga/desliga). Falha no Supabase não atrapalha: Debug + rodapé ("Supabase: N falhas"); o espelho usa `netFetch(…, semSinal)`
+  para não pintar o sinal do topo (amarelo levaria o usuário a registrar de novo).
+- Mesmo número de linha nas duas bases (`id` = linha da Movimentacoes / da AJUSTE). Fotos ficam no Drive (só o link).
+- Projeto conectado: `xmrkwychewovxqsvqxxk` (`SUPABASE_URL`/`SUPABASE_CHAVE` publishable no `app.js`).
+- Banco: schema `estoque` (não exposto na Data API, RLS sem policies), `supabase/migrations/`. Só a Edge Function
+  `supabase/functions/espelho` acessa (conexão direta `SUPABASE_DB_URL`); deploy com Verify JWT desligado.
+  Mudou a função: suba `VERSION` e confira `…/functions/v1/espelho?modo=diag`.
+- Login: mesmo usuário/senha no Supabase Auth, e-mail `nome@estoque.realguindastes.com` (`SUPABASE_EMAIL_DOMINIO`);
+  token só na memória (`SB`), novo login quando vence. `consulta` não chama o Supabase.
+- Carga inicial: `migracao/converter.mjs` (.xlsx baixado → CSV para o Table Editor); saída em `migracao/saida/` (fora do Git).
+- Falhas: `estoque.espelho_log`. Próximas fases (consultas lendo do Supabase; corte) em `migracao/README.md` e no plano.
+
 ## Frontend
 - Chamadas ao backend sempre via `apiGet`/`netFetch` (credenciais, "acesso negado" e sinal de comunicação).
 - Dados vindos da planilha entram no DOM com `textContent`, não `innerHTML`.
@@ -84,4 +100,5 @@ Modos do `doGet`:
 ## Testes (rodar antes de publicar)
 Ver `testes/README.md`. `node testes/consolidado.test.js` (script do Consolidado simulado em Node) e
 `node testes/navegador.test.js` (Playwright, Apps Scripts interceptados) e
-`node testes/foto.test.js` (redução de foto no Chromium e no WebKit/Safari). Ao mudar um fluxo, acrescente o caso.
+`node testes/foto.test.js` (redução de foto no Chromium e no WebKit/Safari), `node testes/duplo.test.js` (alimentação
+dupla) e `node testes/converter.test.js` (conversor das planilhas); `npm test` roda todos. Ao mudar um fluxo, acrescente o caso.

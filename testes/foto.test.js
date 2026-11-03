@@ -40,6 +40,7 @@ async function enviarFotoTeste({ w, h, orientacao }) {
   let enviado = null;
   const fetchOrig = window.fetch;
   window.fetch = async (url, opt) => {
+    if (/supabase\.co/.test(String(url))) return new Response('{"ok":false}', { status: 503 }); // espelho: fora do teste
     enviado = JSON.parse(opt.body);
     return new Response(JSON.stringify({ ok: true, row: 5, slot: 1, fotoUrl: "x" }));
   };
@@ -63,6 +64,7 @@ async function enviarFotoTeste({ w, h, orientacao }) {
         await ctx.addInitScript(() => localStorage.setItem("ce_auth", JSON.stringify({ user: "real", pass: "x" })));
         await ctx.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
         await ctx.route("https://script.google.com/**", r => r.fulfill({ body: '{"ok":true}', contentType: "application/json" }));
+        await ctx.route("https://*.supabase.co/**", r => r.fulfill({ status: 503, body: '{"ok":false}', contentType: "application/json" }));
         const page = await ctx.newPage();
         const erros = [];
         page.on("pageerror", e => erros.push(e.message));

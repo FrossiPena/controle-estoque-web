@@ -1,0 +1,6 @@
+# Só o necessário para as Edge Functions deste repositório (o resto fica no padrão do Supabase CLI)
+project_id = "controle-estoque"
+
+[functions.espelho]
+# A função valida o token do Supabase Auth ela mesma (e responde ao OPTIONS do CORS, que vem sem token)
+verify_jwt = false

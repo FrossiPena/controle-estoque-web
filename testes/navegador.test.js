@@ -35,6 +35,7 @@ const servidor = http.createServer((req, res) => {
       const body = u.pathname.includes("AKfycbxClcs2") ? (inventario[p.mode] || { ok: true }) : m.q(p);
       r.fulfill({ body: JSON.stringify(body), contentType: "application/json" });
     });
+    await ctx.route("https://*.supabase.co/**", r => r.fulfill({ status: 503, body: '{"ok":false}', contentType: "application/json" }));
     await page.goto(url);
 
     const registrar = async (c9, id) => {

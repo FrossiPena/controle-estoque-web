@@ -3,12 +3,15 @@
   "private": true,
   "description": "Testes locais do app (o site em si não usa npm)",
   "scripts": {
-    "test": "node testes/consolidado.test.js && node testes/navegador.test.js && node testes/foto.test.js",
+    "test": "node testes/consolidado.test.js && node testes/converter.test.js && node testes/navegador.test.js && node testes/duplo.test.js && node testes/foto.test.js",
     "test:foto": "node testes/foto.test.js",
     "test:script": "node testes/consolidado.test.js",
-    "test:navegador": "node testes/navegador.test.js"
+    "test:navegador": "node testes/navegador.test.js",
+    "test:duplo": "node testes/duplo.test.js",
+    "test:converter": "node testes/converter.test.js"
   },
   "devDependencies": {
-    "playwright": "1.56.1"
+    "playwright": "1.56.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

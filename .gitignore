@@ -1,3 +1,6 @@
 node_modules/
 # RELAÇÃO completa para testes locais (dados internos: não versionar)
 testes/dados/
+
+# Saída do conversor das planilhas para o Supabase (dados internos: não versionar)
+migracao/saida/
