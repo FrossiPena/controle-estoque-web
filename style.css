@@ -1,4 +1,4 @@
-/* style_v5.20.2.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.21.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -446,3 +446,12 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 /* Acessórios → Vigas */
 .vg-id{ border: 0; cursor: pointer; }
 .vg-filtros select{ margin-bottom: 2px; }
+
+/* 2.1) Cadastro Acessórios: código da viga em campos */
+.vc-campos{ display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; align-items: start; margin: 8px 0; }
+.vc-campo{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vc-campo input, .vc-campo select{ width: 100%; box-sizing: border-box; margin: 0; }
+.vc-campo small{ font-size: 0.75em; opacity: 0.75; line-height: 1.2; }
+.vc-codigo{ font-family: monospace; font-size: 1.15em; font-weight: 700; word-break: break-all; margin: 8px 0 2px; }
+.vc-aviso{ color: #b26a00; }
+.vc-erro{ color: #c62828; }

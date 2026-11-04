@@ -1,3 +1,5 @@
+// v5.21.0 - Tela 2.1) Cadastro Acessórios → Viga: código V em campos com dicas, sequencial sugerido
+//          (maior usado + 1), figura do padrão; passa código/individual para o Cadastro
 // v5.20.2 - Acessórios → Vigas: ordem pela linha do inventário, mais novas primeiro (mostra a linha)
 // v5.20.1 - Espelho do Supabase desligado na publicação (projeto ainda de teste; só "real" tem conta no Auth)
 // v5.20.0 - Consultar Inventário: "Itens por inventário" (marca vários NumInv → todas as linhas, em ordem
@@ -41,7 +43,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.20.2";
+const APP_VERSION = "v5.21.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -101,6 +103,7 @@ function showScreen(key) {
   const map = {
     consulta: { id: "screen-consulta", name: "Consulta ítem" },
     cadastro: { id: "screen-cadastro", name: "Cadastro" },
+    cadacess: { id: "screen-cadacess", name: "Cadastro Acessórios" },
     inventario: { id: "screen-inventario", name: "Consultar Inventário" },
     equipamento: { id: "screen-equipamento", name: "Equipamento" },
     acessorios: { id: "screen-acessorios", name: "Acessórios" },
@@ -132,6 +135,7 @@ function showScreen(key) {
   // Ao entrar na tela (não a cada linha aberta pela lista): recarrega, pode ter havido registro novo
   if (key === "inventario" && mudou && AUTH.user) carregarInvSel();
   if (key === "acessorios" && mudou && AUTH.user) carregarVigas();
+  if (key === "cadacess" && mudou && AUTH.user) carregarCadAcess();
 }
 
 /* =========================
@@ -141,8 +145,8 @@ function showScreen(key) {
 function setCampo1Classes(el, valor) {
   if (!el) return;
   el.classList.remove("campo1-ok", "campo1-bad");
-  const len = (String(valor || "").trim()).length;
-  if (len === 8 || len === 9) el.classList.add("campo1-ok");   // código 9 antigo pode ter 8 dígitos
+  const s = String(valor || "").trim(), len = s.length;
+  if (len === 8 || len === 9 || /^V\./i.test(s)) el.classList.add("campo1-ok"); // código 9 antigo pode ter 8 dígitos; V. = viga
   else el.classList.add("campo1-bad");
 }
 
@@ -507,6 +511,14 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("eq-grua")?.addEventListener("change", onGruaEq);
   document.getElementById("eq-gt")?.addEventListener("change", onGtEq);
   document.getElementById("eq-lanca")?.addEventListener("change", renderListaEq);
+  // Cadastro Acessórios → Viga
+  VC_NUM.forEach(id => document.getElementById(id)?.addEventListener("input", e => {
+    const so = e.target.value.replace(/\D/g, "");
+    if (so !== e.target.value) e.target.value = so;
+    atualizarCodigoViga();
+  }));
+  ["vc-tipo", "vc-secao"].forEach(id => document.getElementById(id)?.addEventListener("change", atualizarCodigoViga));
+  document.getElementById("vc-usar")?.addEventListener("click", usarCodigoViga);
   ["vg-tipo", "vg-secao", "vg-diametro", "vg-comprimento"].forEach(id =>
     document.getElementById(id)?.addEventListener("change", renderVigas));
 
@@ -1116,6 +1128,97 @@ function abrirConsultaPecaEq(codigo9, id) {
 }
 
 /* =========================
+   2.1) CADASTRO ACESSÓRIOS → VIGA
+   Monta V.TIPO.SEÇÃO.DIÂMETRO.COMPRIMENTO.FURO_E.FURO_D-SEQ campo a campo e passa para o Cadastro
+   (código no campo 1, sequencial sem zeros à esquerda no individual). Sequencial sugerido = maior já usado + 1.
+========================= */
+
+const VC = { seqUsados: new Map(), sugerido: "" }; // seqUsados: nº → código já registrado com ele
+const VC_NUM = ["vc-diam", "vc-comp", "vc-furoe", "vc-furod", "vc-seq"];
+
+async function carregarCadAcess() {
+  const dica = document.getElementById("vc-seq-dica");
+  try {
+    const j = await buscarInvResumo();
+    VC.seqUsados = new Map();
+    Object.keys(j.chaves || {}).filter(k => /^V\./i.test(k)).forEach(k => {
+      const i = k.lastIndexOf("|");
+      const codigo = k.slice(0, i), id = k.slice(i + 1);
+      const m = codigo.match(/-(\d+)\s*$/);
+      [m && m[1], id].forEach(s => {
+        const n = parseInt(s, 10);
+        if (n > 0 && !VC.seqUsados.has(n)) VC.seqUsados.set(n, codigo);
+      });
+    });
+    const maior = Math.max(0, ...VC.seqUsados.keys());
+    VC.sugerido = String(Math.min(maior + 1, 99)).padStart(2, "0");
+    const seq = document.getElementById("vc-seq");
+    if (seq) seq.value = VC.sugerido;
+    if (dica) dica.textContent = `Nº sequencial (sugerido ${VC.sugerido}; último usado ${String(maior).padStart(2, "0")})`;
+  } catch (err) {
+    logDebug("Erro inv_resumo (Cadastro Acessórios): " + err);
+    if (dica) dica.textContent = "Nº sequencial (não foi possível sugerir; ver Debug)";
+  }
+  atualizarCodigoViga();
+}
+
+function codigoVigaAtual() {
+  const v = id => (document.getElementById(id)?.value || "").trim();
+  const seq = v("vc-seq");
+  return {
+    tipo: v("vc-tipo"), secao: v("vc-secao"), diam: v("vc-diam"), comp: v("vc-comp"),
+    furoE: v("vc-furoe"), furoD: v("vc-furod"), seq: seq ? seq.padStart(2, "0") : "",
+  };
+}
+
+// Atualiza a prévia e a mensagem; devolve o código quando pode ser usado (senão "")
+function atualizarCodigoViga() {
+  const c = codigoVigaAtual();
+  const q = s => s === "" ? "?" : s;
+  const codigo = `V.${q(c.tipo)}.${q(c.secao)}.${q(c.diam)}.${q(c.comp)}.${q(c.furoE)}.${q(c.furoD)}-${q(c.seq)}`;
+  document.getElementById("vc-codigo").textContent = codigo;
+
+  const faltam = [];
+  if (!c.tipo) faltam.push("tipo");
+  if (!c.secao) faltam.push("seção");
+  if (!Number(c.diam)) faltam.push("diâmetro");
+  if (!Number(c.comp)) faltam.push("comprimento");
+  if (!c.furoE) faltam.push("furo esquerdo");
+  if (!c.furoD) faltam.push("furo direito");
+  if (!Number(c.seq)) faltam.push("sequencial");
+
+  let texto = "", classe = "", ok = !faltam.length;
+  if (!ok) texto = "Falta: " + faltam.join(", ") + ".";
+  else {
+    const usado = VC.seqUsados.get(Number(c.seq));
+    if (usado && usado.toUpperCase() === codigo.toUpperCase()) {
+      texto = "Essa viga já está no inventário: será um novo registro dela (ex.: outro inventário).";
+      classe = "vc-aviso";
+    } else if (usado) {
+      texto = `O sequencial ${c.seq} já é da viga ${usado}. Use outro (sugerido ${VC.sugerido}).`;
+      classe = "vc-erro"; ok = false;
+    }
+  }
+  const msg = document.getElementById("vc-msg");
+  msg.textContent = texto;
+  msg.className = "secao-info " + classe;
+  document.getElementById("vc-usar").disabled = !ok;
+  return ok ? codigo : "";
+}
+
+function usarCodigoViga() {
+  const codigo = atualizarCodigoViga();
+  if (!codigo) return;
+  const individual = String(Number(codigoVigaAtual().seq));
+  document.getElementById("campo1_cad").value = codigo;
+  document.getElementById("campo2_cad").value = individual;
+  syncCadastroToMaster();
+  showScreen("cadastro");
+  window.scrollTo(0, 0);
+  setStatusCadastro(`Viga ${codigo} (individual ${individual}) preenchida. Complete inventário, pátio, rua e andar e toque em Registrar.`);
+}
+
+/* =========================
    ACESSÓRIOS → VIGAS: peças do inventário com código "V." (V.TIPO.SEÇÃO.DIÂMETRO.COMPRIMENTO.FURO_E.FURO_D-SEQ)
    A lista vem do inv_resumo (código|individual → {NumInv: linha}); códigos fora do padrão também aparecem.
 ========================= */
@@ -1592,6 +1695,10 @@ function mostrarMcCadastro(estado) {
 
 async function verificarPecaCadastro(c9, id) {
   if (!c9 || !id) return;
+  if (/^V\./i.test(String(c9))) { // acessório (viga): não existe na MachineCards
+    mostrarMcCadastro({ ok: true, texto: "Acessório (código V.): não é conferido na MachineCards." });
+    return;
+  }
   try {
     const j = await eqGetJson(`${ENDPOINT_CONSULTA}?mode=verificar_peca&codigo9=${encodeURIComponent(c9)}&id=${encodeURIComponent(id)}&t=${Date.now()}`);
     if (!(j && j.ok)) throw new Error(j && j.error || "resposta inválida");

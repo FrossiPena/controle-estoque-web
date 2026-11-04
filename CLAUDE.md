@@ -82,6 +82,9 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
 - **cadastro**: `registrarMovimentacaoUI` → `log_mov` no Inventário; `carregarUltimoNumInv`; `verificarPecaCadastro`
   (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`
   (`reduzirFoto`: acima de Full HD reduz para 1080 no lado menor, JPEG 0,85; se falhar, envia o original).
+- **cadacess** (2.1 Cadastro Acessórios → Viga): `carregarCadAcess` (sequencial sugerido = maior SEQ/individual das chaves "V." do
+  `inv_resumo` + 1; SEQ de outra viga bloqueia), `atualizarCodigoViga` (prévia), `usarCodigoViga` (preenche campo 1/2 e vai ao
+  Cadastro, onde se registra). Figura do padrão: `img/padrao-vigas.jpg`. Código "V." não é conferido na MachineCards.
 - **inventario** (Consultar Inventário): `listarInventario`, `buscaCompletaUI`, `consultarLinhaInventarioUI`,
   `deletarLinhaInventarioUI`; "Itens por inventário" (`carregarInvSel` → `listarLinhasInvSel`, `linhas_inv`, estado `INVSEL`).
 - **acessorios** (Acessórios → Vigas): `carregarVigas` (lista pelas chaves do `inv_resumo` com código "V.", pela linha mais recente, decrescente),

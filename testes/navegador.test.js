@@ -160,6 +160,32 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(await page.inputValue("#campo2"), "2");
     console.log("ok - Acessórios: vigas em ordem, filtro, inventário e consulta");
 
+    // J) 2.1) Cadastro Acessórios → Viga: campos, sequencial sugerido, sequencial repetido, passa para o Cadastro
+    await page.evaluate(() => showScreen("cadacess"));
+    await page.waitForFunction(() => document.getElementById("vc-seq").value === "03"); // maior usado (02) + 1
+    assert.strictEqual(await page.isDisabled("#vc-usar"), true);
+    const href = await page.getAttribute("#vc-box a", "href");
+    assert.strictEqual((await page.request.get(new URL(href, url).href)).status(), 200, "figura do padrão");
+    await page.selectOption("#vc-tipo", "V");
+    await page.selectOption("#vc-secao", "T");
+    await page.fill("#vc-diam", "280");
+    await page.fill("#vc-comp", "51a00");                     // só números
+    await page.fill("#vc-furoe", "70");
+    await page.fill("#vc-furod", "0");
+    assert.strictEqual(await page.textContent("#vc-codigo"), "V.V.T.280.5100.70.0-03");
+    assert.strictEqual(await page.isDisabled("#vc-usar"), false);
+    await page.fill("#vc-seq", "1");
+    assert.match(await page.textContent("#vc-msg"), /sequencial 01 já é da viga V\.I\.T\.324\.4000\.0\.0-01/);
+    assert.strictEqual(await page.isDisabled("#vc-usar"), true);
+    await page.fill("#vc-seq", "3");
+    await page.click("#vc-usar");
+    assert.strictEqual(await page.isVisible("#screen-cadastro"), true);
+    assert.strictEqual(await page.inputValue("#campo1_cad"), "V.V.T.280.5100.70.0-03");
+    assert.strictEqual(await page.inputValue("#campo2_cad"), "3");
+    assert.strictEqual(await page.inputValue("#campo1"), "V.V.T.280.5100.70.0-03");
+    assert.match(await page.textContent("#status-msg"), /Complete inventário/);
+    console.log("ok - Cadastro Acessórios: código da viga em campos e sequencial sugerido");
+
     // G) usuário consulta: menu só Consulta e Equipamento, sem "+ Inserir compatível"
     const pc = await ctx.newPage();
     pc.on("pageerror", e => erros.push(e.message));

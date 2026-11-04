@@ -1,13 +1,13 @@
-<!-- index.html - v5.20.2 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v5.21.0 (Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.20.2" />
+  <meta name="app-version" content="v5.21.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.20.2" />
+  <link rel="stylesheet" href="style.css?v=5.21.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -42,6 +42,7 @@
     <nav class="nav">
       <button type="button" data-screen="consulta" class="active">1) Consulta ítem</button>
       <button type="button" data-screen="cadastro">2) Cadastro</button>
+      <button type="button" data-screen="cadacess">2.1) Cadastro Acessórios</button>
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
       <button type="button" data-screen="equipamento">4) Equipamento</button>
       <button type="button" data-screen="acessorios">5) Acessórios</button>
@@ -281,6 +282,67 @@
       <div id="cad-mc" class="cad-mc" hidden></div>
     </section>
 
+    <!-- 2.1) Cadastro Acessórios -->
+    <section class="frame" id="screen-cadacess" hidden>
+      <h2>Cadastro Acessórios</h2>
+
+      <label class="campo-label" for="ca-tipo">Acessório</label>
+      <select id="ca-tipo">
+        <option value="viga">Viga</option>
+      </select>
+
+      <div class="secao" id="vc-box">
+      <h3>Código da viga: V. …</h3>
+      <p class="secao-info"><a href="img/padrao-vigas.jpg" target="_blank" rel="noopener">Clique aqui para acessar como preencher o código da viga</a></p>
+
+      <div class="vc-campos">
+        <div class="vc-campo">
+          <select id="vc-tipo" aria-label="Tipo de viga">
+            <option value="">?</option>
+            <option value="V">V – Completa</option>
+            <option value="I">I – Intermediária</option>
+            <option value="R">R – Regulável</option>
+            <option value="P">P – Ponta simples</option>
+          </select>
+          <small>Tipo de viga</small>
+        </div>
+        <div class="vc-campo">
+          <select id="vc-secao" aria-label="Seção">
+            <option value="">?</option>
+            <option value="T">T – Tubular</option>
+            <option value="P">P – Perfil I</option>
+          </select>
+          <small>Seção</small>
+        </div>
+        <div class="vc-campo">
+          <input type="text" id="vc-diam" inputmode="numeric" maxlength="4" placeholder="ex.: 280" aria-label="Diâmetro" />
+          <small>Ø do tubo (perímetro ÷ 3,14) ou altura do perfil, mm</small>
+        </div>
+        <div class="vc-campo">
+          <input type="text" id="vc-comp" inputmode="numeric" maxlength="5" placeholder="ex.: 5100" aria-label="Comprimento" />
+          <small>Comprimento nominal, mm</small>
+        </div>
+        <div class="vc-campo">
+          <input type="text" id="vc-furoe" inputmode="numeric" maxlength="3" placeholder="ex.: 70" aria-label="Furo esquerdo" />
+          <small>Furo do olhal esquerdo, mm (0 = flange)</small>
+        </div>
+        <div class="vc-campo">
+          <input type="text" id="vc-furod" inputmode="numeric" maxlength="3" placeholder="ex.: 70" aria-label="Furo direito" />
+          <small>Furo do olhal direito, mm (0 = flange)</small>
+        </div>
+        <div class="vc-campo">
+          <input type="text" id="vc-seq" inputmode="numeric" maxlength="2" placeholder="01" aria-label="Sequencial" />
+          <small id="vc-seq-dica">Nº sequencial (01 a 99)</small>
+        </div>
+      </div>
+
+      <p class="vc-codigo" id="vc-codigo">V.?.?.?.?.?.?-?</p>
+      <p class="secao-info" id="vc-msg"></p>
+      <button type="button" id="vc-usar" disabled>Usar no Cadastro →</button>
+      <p class="secao-info">O código e o individual vão para o Cadastro; lá você completa inventário, pátio, rua e andar e toca em Registrar.</p>
+      </div>
+    </section>
+
     <!-- 3) Consultar Inventário -->
     <section class="frame" id="screen-inventario" hidden>
       <h2>Consultar Inventário</h2>
@@ -448,7 +510,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.20.2"></script>
+  <script src="app.js?v=5.21.0"></script>
 </body>
 </html>
 
