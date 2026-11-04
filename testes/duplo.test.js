@@ -13,6 +13,8 @@ const servidor = http.createServer((req, res) => {
   const arq = path.join(RAIZ, decodeURIComponent(new URL(req.url, "http://x").pathname));
   if (!arq.startsWith(RAIZ) || !fs.existsSync(arq) || fs.statSync(arq).isDirectory()) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { "Content-Type": TIPOS[path.extname(arq)] || "application/octet-stream" });
+  // O app pode ser publicado com o espelho desligado; aqui ele é ligado para testar a alimentação dupla
+  if (path.basename(arq) === "app.js") return res.end(fs.readFileSync(arq, "utf8").replace(/const ESPELHO_SUPABASE = false;/, "const ESPELHO_SUPABASE = true;"));
   fs.createReadStream(arq).pipe(res);
 });
 

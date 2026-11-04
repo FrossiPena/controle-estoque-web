@@ -1,3 +1,4 @@
+// v5.20.1 - Espelho do Supabase desligado na publicação (projeto ainda de teste; só "real" tem conta no Auth)
 // v5.20.0 - Consultar Inventário: "Itens por inventário" (marca vários NumInv → todas as linhas, em ordem
 //          de linha; mode=linhas_inv, Inventário v5.10-inv). Nova tela 5) Acessórios → Vigas (código "V.",
 //          ordem alfabética, filtros por tipo/seção/diâmetro/comprimento, verde/vermelho por inventário)
@@ -39,7 +40,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.20.0";
+const APP_VERSION = "v5.20.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -49,7 +50,7 @@ const ENDPOINT_REGISTRO =
 
 // Supabase (migração, fase 1): gravações aceitas pelo Apps Script são repetidas na função "espelho".
 // false = desliga o espelho (o app volta a usar só o Google).
-const ESPELHO_SUPABASE = true;
+const ESPELHO_SUPABASE = false;
 const SUPABASE_URL = "https://xmrkwychewovxqsvqxxk.supabase.co";
 const SUPABASE_CHAVE = "sb_publishable_J7TEpA4OOKxJs6RRiil4yg_pTzDPMp8"; // chave pública (publishable)
 const SUPABASE_EMAIL_DOMINIO = "estoque.realguindastes.com";            // usuário "fernando" = fernando@…

@@ -58,7 +58,8 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 ## Supabase (migração, fase 1: alimentação dupla)
 - Objetivo: sair do Google; o Postgres vira a fonte única no corte. Agora o Google continua sendo o principal e os
   **Apps Scripts não mudam**: o app grava no Apps Script e, só se deu certo, repete no Supabase (`espelhar(modo, dados)`
-  em `app.js`; `ESPELHO_SUPABASE` liga/desliga). Falha no Supabase não atrapalha: Debug + rodapé ("Supabase: N falhas"); o espelho usa `netFetch(…, semSinal)`
+  em `app.js`; `ESPELHO_SUPABASE` liga/desliga; publicado desligado desde a v5.20.1 até a carga inicial e os usuários no Auth;
+  o `duplo.test.js` liga ao servir o `app.js`). Falha no Supabase não atrapalha: Debug + rodapé ("Supabase: N falhas"); o espelho usa `netFetch(…, semSinal)`
   para não pintar o sinal do topo (amarelo levaria o usuário a registrar de novo).
 - Mesmo número de linha nas duas bases (`id` = linha da Movimentacoes / da AJUSTE). Fotos ficam no Drive (só o link).
 - Projeto conectado: `xmrkwychewovxqsvqxxk` (`SUPABASE_URL`/`SUPABASE_CHAVE` publishable no `app.js`).
