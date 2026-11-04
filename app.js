@@ -1,3 +1,4 @@
+// v5.20.2 - Acessórios → Vigas: ordem pela linha do inventário, mais novas primeiro (mostra a linha)
 // v5.20.1 - Espelho do Supabase desligado na publicação (projeto ainda de teste; só "real" tem conta no Auth)
 // v5.20.0 - Consultar Inventário: "Itens por inventário" (marca vários NumInv → todas as linhas, em ordem
 //          de linha; mode=linhas_inv, Inventário v5.10-inv). Nova tela 5) Acessórios → Vigas (código "V.",
@@ -40,7 +41,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.20.1";
+const APP_VERSION = "v5.20.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -1156,10 +1157,11 @@ async function carregarVigas() {
       .map(k => {
         const i = k.lastIndexOf("|");
         const codigo = k.slice(0, i), id = k.slice(i + 1);
-        return { codigo, id, regs: j.chaves[k] || {}, p: partesViga(codigo) };
+        const regs = j.chaves[k] || {};
+        const linha = Math.max(0, ...Object.values(regs).map(Number).filter(n => n > 0)); // registro mais recente
+        return { codigo, id, regs, linha, p: partesViga(codigo) };
       })
-      .sort((a, b) => a.codigo.localeCompare(b.codigo, "pt", { numeric: true }) ||
-                      a.id.localeCompare(b.id, "pt", { numeric: true }));
+      .sort((a, b) => (b.linha - a.linha) || a.codigo.localeCompare(b.codigo, "pt", { numeric: true }));
     preencherFiltrosVigas();
     renderVigas();
   } catch (err) {
@@ -1237,7 +1239,7 @@ function renderVigas() {
     const invs = Object.keys(v.regs);
     if (invs.length) {
       const s = document.createElement("span");
-      s.textContent = `Inventário(s): ${ordenarNumInv(invs).join(", ")}`;
+      s.textContent = `Inventário(s): ${ordenarNumInv(invs).join(", ")}` + (v.linha ? ` · linha ${v.linha}` : "");
       ids.appendChild(s);
     }
     card.appendChild(ids);

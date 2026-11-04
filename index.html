@@ -1,13 +1,13 @@
-<!-- index.html - v5.20.1 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v5.20.2 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.20.1" />
+  <meta name="app-version" content="v5.20.2" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.20.1" />
+  <link rel="stylesheet" href="style.css?v=5.20.2" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -328,7 +328,7 @@
 
       <div class="secao">
       <h3>Vigas</h3>
-      <p class="secao-info">Peças registradas no inventário com código começando por "V." (ordem alfabética).</p>
+      <p class="secao-info">Peças registradas no inventário com código começando por "V." (pela linha do inventário, mais novas primeiro).</p>
 
       <label class="campo-label">Conferir inventário(s)</label>
       <details class="eq-inv" id="vg-inv">
@@ -448,7 +448,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.20.1"></script>
+  <script src="app.js?v=5.20.2"></script>
 </body>
 </html>
 

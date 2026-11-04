@@ -84,7 +84,7 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
   (`reduzirFoto`: acima de Full HD reduz para 1080 no lado menor, JPEG 0,85; se falhar, envia o original).
 - **inventario** (Consultar Inventário): `listarInventario`, `buscaCompletaUI`, `consultarLinhaInventarioUI`,
   `deletarLinhaInventarioUI`; "Itens por inventário" (`carregarInvSel` → `listarLinhasInvSel`, `linhas_inv`, estado `INVSEL`).
-- **acessorios** (Acessórios → Vigas): `carregarVigas` (lista pelas chaves do `inv_resumo` com código "V.", ordem alfabética),
+- **acessorios** (Acessórios → Vigas): `carregarVigas` (lista pelas chaves do `inv_resumo` com código "V.", pela linha mais recente, decrescente),
   `partesViga` (`V.TIPO.SEÇÃO.DIÂMETRO.COMPRIMENTO.FURO_E.FURO_D-SEQ`), filtros `preencherFiltrosVigas`, `renderVigas`; estado `VG`.
   Código V é inventado pelo usuário (não é Código C) e não é validado: fora do padrão também aparece.
 - **equipamento**: grua → GT → comprimento de lança (`carregarGruasEq`, `onGruaEq`, `onGtEq`, `renderListaEq`);

@@ -35,7 +35,7 @@ const servidor = http.createServer((req, res) => {
       { row: 1901, numInv: "5", campo1: "146000231", campo2: "1103", loc: "1", rua: "A", andar: "2", dataHora: "2026-11-04 09:40:00", usuario: "real" },
     ];
     const INV_RESUMO = { ok: true, numinvs: [{ numInv: "5", registros: 2 }, { numInv: "6", registros: 1 }],
-      chaves: { "V.V.T.226.5100.60.60-02|2": { "5": 1900 }, "V.I.T.324.4000.0.0-01|1": { "6": 1902 }, "146000231|1103": { "5": 1901 } } };
+      chaves: { "V.V.T.226.5100.60.60-02|2": { "5": 1900 }, "V.I.T.324.4000.0.0-01|1": { "6": 1899 }, "146000231|1103": { "5": 1901 } } };
     const PEDIDOS_LINHAS = [];
     await ctx.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
     await ctx.route("https://script.google.com/**", r => {
@@ -140,11 +140,12 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(await page.locator("#invsel-lista .item-inv").count(), 3, "abrir uma linha não refaz a lista");
     console.log("ok - Consultar Inventário: vários inventários, linhas em ordem");
 
-    // I) Acessórios → Vigas: só códigos "V.", ordem alfabética, filtro e verde/vermelho por inventário
+    // I) Acessórios → Vigas: só códigos "V.", linha mais recente primeiro, filtro e verde/vermelho por inventário
     await page.evaluate(() => showScreen("acessorios"));
     await page.waitForFunction(() => document.querySelectorAll("#vg-lista .eq-item").length === 2);
     const vigas = await page.$$eval("#vg-lista .eq-item-titulo", ts => ts.map(t => t.textContent));
-    assert.deepStrictEqual(vigas, ["V.I.T.324.4000.0.0-01", "V.V.T.226.5100.60.60-02"]);
+    assert.deepStrictEqual(vigas, ["V.V.T.226.5100.60.60-02", "V.I.T.324.4000.0.0-01"]);
+    assert.match(await page.textContent("#vg-lista"), /Inventário\(s\): 5 · linha 1900/);
     assert.match(await page.textContent("#vg-lista"), /Viga completa · Tubular · Ø 226 mm · 5100 mm · furos 60\/60/);
     await page.click("#vg-inv summary");
     await page.check('#vg-inv-opcoes input[value="5"]');
@@ -154,7 +155,7 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(await page.locator("#vg-lista .eq-item").count(), 1);
     assert.match(await page.textContent("#vg-status"), /1 de 2 viga\(s\) · 0 registrada/);
     await page.selectOption("#vg-tipo", "");
-    await page.locator("#vg-lista .vg-id").last().click();
+    await page.locator("#vg-lista .vg-id").first().click();
     assert.strictEqual(await page.inputValue("#campo1"), "V.V.T.226.5100.60.60-02");
     assert.strictEqual(await page.inputValue("#campo2"), "2");
     console.log("ok - Acessórios: vigas em ordem, filtro, inventário e consulta");
