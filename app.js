@@ -1,3 +1,6 @@
+// v5.20.0 - Consultar Inventário: "Itens por inventário" (marca vários NumInv → todas as linhas, em ordem
+//          de linha; mode=linhas_inv, Inventário v5.10-inv). Nova tela 5) Acessórios → Vigas (código "V.",
+//          ordem alfabética, filtros por tipo/seção/diâmetro/comprimento, verde/vermelho por inventário)
 // v5.19.0 - Migração para o Supabase, fase 1 (alimentação dupla): o que o Apps Script grava com sucesso
 //          também vai para a função "espelho" do Supabase; falha lá não atrapalha (Debug + rodapé)
 // v5.18.0 - Fotos maiores que Full HD são reduzidas no celular antes do envio (1080 no lado menor, JPEG 0,85)
@@ -36,7 +39,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.19.0";
+const APP_VERSION = "v5.20.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -98,12 +101,14 @@ function showScreen(key) {
     cadastro: { id: "screen-cadastro", name: "Cadastro" },
     inventario: { id: "screen-inventario", name: "Consultar Inventário" },
     equipamento: { id: "screen-equipamento", name: "Equipamento" },
+    acessorios: { id: "screen-acessorios", name: "Acessórios" },
     ajuste: { id: "screen-ajuste", name: "Ajuste de machine card" },
     debug: { id: "screen-debug", name: "Debug" },
   };
 
   // Só uma câmera por vez: trocar de tela para o leitor
-  if (key !== CURRENT_SCREEN) pararLeitor();
+  const mudou = key !== CURRENT_SCREEN;
+  if (mudou) pararLeitor();
 
   Object.keys(map).forEach(k => {
     const sec = document.getElementById(map[k].id);
@@ -122,6 +127,9 @@ function showScreen(key) {
     if (!EQ.gruasCarregadas) carregarGruasEq();
     carregarInventariosEq(); // sempre atualiza: pode ter havido registro novo
   }
+  // Ao entrar na tela (não a cada linha aberta pela lista): recarrega, pode ter havido registro novo
+  if (key === "inventario" && mudou && AUTH.user) carregarInvSel();
+  if (key === "acessorios" && mudou && AUTH.user) carregarVigas();
 }
 
 /* =========================
@@ -205,10 +213,11 @@ function atualizarUsuarioUI() {
   const el = document.getElementById("user-info");
   if (el) el.textContent = (AUTH.user ? `Usuário: ${AUTH.user} · ` : "") + APP_VERSION;
   const soConsulta = ehUsuarioConsulta();
+  const telasConsulta = ["consulta", "equipamento", "acessorios"];
   document.querySelectorAll(".nav button").forEach(btn => {
-    btn.hidden = soConsulta && !["consulta", "equipamento"].includes(btn.dataset.screen);
+    btn.hidden = soConsulta && !telasConsulta.includes(btn.dataset.screen);
   });
-  if (soConsulta && !["consulta", "equipamento"].includes(CURRENT_SCREEN)) showScreen("consulta");
+  if (soConsulta && !telasConsulta.includes(CURRENT_SCREEN)) showScreen("consulta");
 }
 
 function mostrarLogin(msg) {
@@ -496,6 +505,8 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("eq-grua")?.addEventListener("change", onGruaEq);
   document.getElementById("eq-gt")?.addEventListener("change", onGtEq);
   document.getElementById("eq-lanca")?.addEventListener("change", renderListaEq);
+  ["vg-tipo", "vg-secao", "vg-diametro", "vg-comprimento"].forEach(id =>
+    document.getElementById(id)?.addEventListener("change", renderVigas));
 
   // Login
   document.getElementById("login-form")?.addEventListener("submit", fazerLogin);
@@ -1014,16 +1025,61 @@ async function carregarGruasEq() {
   }
 }
 
+/* Caixas "Inventário N (x registros)": Equipamento, Consultar Inventário e Acessórios (cada tela com a sua seleção) */
+
+function ordenarNumInv(lista) {
+  return [...lista].sort((a, b) => (Number(a) - Number(b)) || String(a).localeCompare(String(b)));
+}
+
+// inv_resumo: { numinvs:[{numInv, registros}], chaves:{"código9|individual": {NumInv: linha}} }
+async function buscarInvResumo() {
+  const j = await eqGetJson(`${ENDPOINT_REGISTRO}?mode=inv_resumo&t=${Date.now()}`);
+  if (!(j && j.ok && Array.isArray(j.numinvs))) throw new Error(j && j.error || "resposta inválida");
+  return j;
+}
+
+// Mantém só seleções que ainda existem na planilha
+function podarSelecaoInv(sel, numinvs) {
+  const existentes = new Set(numinvs.map(n => n.numInv));
+  sel.forEach(n => { if (!existentes.has(n)) sel.delete(n); });
+}
+
+function atualizarResumoInv(resumoId, sel) {
+  const resumo = document.getElementById(resumoId);
+  if (!resumo) return;
+  const lista = ordenarNumInv(sel);
+  resumo.textContent = lista.length ? `Inventário ${lista.join(", ")}` : "Nenhum selecionado (toque para escolher)";
+}
+
+function renderOpcoesInv(boxId, resumoId, numinvs, sel, aoMudar) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.replaceChildren();
+  if (!numinvs.length) box.textContent = "Nenhum número de inventário na planilha.";
+  numinvs.forEach(({ numInv, registros }) => {
+    const lab = document.createElement("label");
+    lab.className = "eq-inv-opcao";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = numInv; cb.checked = sel.has(numInv);
+    cb.addEventListener("change", () => {
+      if (cb.checked) sel.add(numInv); else sel.delete(numInv);
+      atualizarResumoInv(resumoId, sel);
+      aoMudar();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(` Inventário ${numInv} (${registros} registros)`));
+    box.appendChild(lab);
+  });
+  atualizarResumoInv(resumoId, sel);
+}
+
 async function carregarInventariosEq() {
   const resumo = document.getElementById("eq-inv-resumo");
   if (resumo && !EQ.inv) resumo.textContent = "Carregando…";
   try {
-    const j = await eqGetJson(`${ENDPOINT_REGISTRO}?mode=inv_resumo&t=${Date.now()}`);
-    if (!(j && j.ok && Array.isArray(j.numinvs))) throw new Error(j && j.error || "resposta inválida");
+    const j = await buscarInvResumo();
     EQ.inv = j;
-    // mantém só seleções que ainda existem
-    const existentes = new Set(j.numinvs.map(n => n.numInv));
-    EQ.invSel.forEach(n => { if (!existentes.has(n)) EQ.invSel.delete(n); });
+    podarSelecaoInv(EQ.invSel, j.numinvs);
     renderOpcoesInvEq();
     renderListaEq();
   } catch (err) {
@@ -1033,35 +1089,7 @@ async function carregarInventariosEq() {
 }
 
 function renderOpcoesInvEq() {
-  const box = document.getElementById("eq-inv-opcoes");
-  const resumo = document.getElementById("eq-inv-resumo");
-  if (!box || !EQ.inv) return;
-  box.replaceChildren();
-  if (!EQ.inv.numinvs.length) {
-    box.textContent = "Nenhum número de inventário na planilha.";
-  }
-  EQ.inv.numinvs.forEach(({ numInv, registros }) => {
-    const lab = document.createElement("label");
-    lab.className = "eq-inv-opcao";
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.value = numInv; cb.checked = EQ.invSel.has(numInv);
-    cb.addEventListener("change", () => {
-      if (cb.checked) EQ.invSel.add(numInv); else EQ.invSel.delete(numInv);
-      atualizarResumoInvEq();
-      renderListaEq();
-    });
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(` Inventário ${numInv} (${registros} registros)`));
-    box.appendChild(lab);
-  });
-  atualizarResumoInvEq();
-}
-
-function atualizarResumoInvEq() {
-  const resumo = document.getElementById("eq-inv-resumo");
-  if (!resumo) return;
-  const sel = [...EQ.invSel].sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
-  resumo.textContent = sel.length ? `Inventário ${sel.join(", ")}` : "Nenhum selecionado (toque para escolher)";
+  if (EQ.inv) renderOpcoesInv("eq-inv-opcoes", "eq-inv-resumo", EQ.inv.numinvs, EQ.invSel, renderListaEq);
 }
 
 // Linhas de inventário (NumInv marcados) para o par Código 9 + código individual
@@ -1083,6 +1111,142 @@ function abrirConsultaPecaEq(codigo9, id) {
   syncCampo2ToCadastro();
   window.scrollTo(0, 0);
   consultarDados();
+}
+
+/* =========================
+   ACESSÓRIOS → VIGAS: peças do inventário com código "V." (V.TIPO.SEÇÃO.DIÂMETRO.COMPRIMENTO.FURO_E.FURO_D-SEQ)
+   A lista vem do inv_resumo (código|individual → {NumInv: linha}); códigos fora do padrão também aparecem.
+========================= */
+
+const VG = { inv: null, sel: new Set(), vigas: [] };
+const VG_TIPOS = { V: "Viga completa", I: "Intermediária", R: "Regulável", P: "Ponta simples" };
+const VG_SECOES = { T: "Tubular", P: "Perfil I" };
+const VG_FILTROS = ["tipo", "secao", "diametro", "comprimento"];
+
+function partesViga(codigo) {
+  const [, tipo = "", secao = "", diametro = "", comprimento = "", furoE = "", resto = ""] =
+    String(codigo || "").toUpperCase().split(".");
+  const [furoD = "", seq = ""] = resto.split("-");
+  return { tipo, secao, diametro, comprimento, furoE, furoD, seq };
+}
+
+function descricaoViga(p) {
+  const t = [];
+  if (p.tipo) t.push(VG_TIPOS[p.tipo] || p.tipo);
+  if (p.secao) t.push(VG_SECOES[p.secao] || p.secao);
+  if (p.diametro) t.push(`Ø ${p.diametro} mm`);
+  if (p.comprimento) t.push(`${p.comprimento} mm`);
+  if (p.furoE || p.furoD) t.push(`furos ${p.furoE || "?"}/${p.furoD || "?"}`);
+  return t.join(" · ");
+}
+
+async function carregarVigas() {
+  const resumo = document.getElementById("vg-inv-resumo");
+  if (resumo && !VG.inv) resumo.textContent = "Carregando…";
+  const st = document.getElementById("vg-status");
+  if (st && !VG.inv) st.textContent = "Carregando vigas…";
+  try {
+    const j = await buscarInvResumo();
+    VG.inv = j;
+    podarSelecaoInv(VG.sel, j.numinvs);
+    renderOpcoesInv("vg-inv-opcoes", "vg-inv-resumo", j.numinvs, VG.sel, renderVigas);
+    VG.vigas = Object.keys(j.chaves || {})
+      .filter(k => /^V\./i.test(k))
+      .map(k => {
+        const i = k.lastIndexOf("|");
+        const codigo = k.slice(0, i), id = k.slice(i + 1);
+        return { codigo, id, regs: j.chaves[k] || {}, p: partesViga(codigo) };
+      })
+      .sort((a, b) => a.codigo.localeCompare(b.codigo, "pt", { numeric: true }) ||
+                      a.id.localeCompare(b.id, "pt", { numeric: true }));
+    preencherFiltrosVigas();
+    renderVigas();
+  } catch (err) {
+    logDebug("Erro inv_resumo (Acessórios): " + err);
+    if (resumo) resumo.textContent = "Erro ao carregar os inventários (ver Debug)";
+    if (st) st.textContent = "Não foi possível carregar as vigas (ver Debug). Abra a tela de novo para tentar.";
+  }
+}
+
+function preencherFiltrosVigas() {
+  const rotulo = {
+    tipo: v => VG_TIPOS[v] ? `${v} – ${VG_TIPOS[v]}` : v,
+    secao: v => VG_SECOES[v] ? `${v} – ${VG_SECOES[v]}` : v,
+  };
+  VG_FILTROS.forEach(f => {
+    const sel = document.getElementById("vg-" + f);
+    if (!sel) return;
+    const atual = sel.value;
+    const valores = [...new Set(VG.vigas.map(v => v.p[f]).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "pt", { numeric: true }));
+    sel.replaceChildren();
+    const todos = document.createElement("option");
+    todos.value = ""; todos.textContent = "Todos";
+    sel.appendChild(todos);
+    valores.forEach(v => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = rotulo[f] ? rotulo[f](v) : v;
+      sel.appendChild(o);
+    });
+    sel.value = valores.includes(atual) ? atual : "";
+  });
+}
+
+function renderVigas() {
+  const box = document.getElementById("vg-lista");
+  const st = document.getElementById("vg-status");
+  if (!box) return;
+  box.replaceChildren();
+  if (!VG.inv) return;
+  if (!VG.vigas.length) {
+    if (st) st.textContent = 'Nenhuma viga (código começando por "V.") no inventário.';
+    return;
+  }
+
+  const filtro = {};
+  VG_FILTROS.forEach(f => { filtro[f] = document.getElementById("vg-" + f)?.value || ""; });
+  const lista = VG.vigas.filter(v => VG_FILTROS.every(f => !filtro[f] || v.p[f] === filtro[f]));
+  const sel = ordenarNumInv(VG.sel);
+  let registradas = 0;
+
+  lista.forEach(v => {
+    const achados = sel.filter(n => v.regs[n]);
+    if (achados.length) registradas++;
+    const card = document.createElement("div");
+    card.className = "eq-item" + (sel.length ? (achados.length ? " eq-item-ok" : " eq-item-falta") : "");
+
+    const t = document.createElement("div");
+    t.className = "eq-item-titulo eq-item-codigo";
+    t.textContent = v.codigo;
+    card.appendChild(t);
+
+    const d = document.createElement("div");
+    d.textContent = descricaoViga(v.p);
+    card.appendChild(d);
+
+    const ids = document.createElement("div");
+    ids.className = "eq-item-ids";
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "eq-id vg-id" + (sel.length ? (achados.length ? " eq-id-ok" : " eq-id-falta") : "");
+    chip.textContent = `Individual ${v.id}`;
+    chip.title = "Abrir na Consulta ítem";
+    chip.addEventListener("click", () => abrirConsultaPecaEq(v.codigo, v.id));
+    ids.appendChild(chip);
+    const invs = Object.keys(v.regs);
+    if (invs.length) {
+      const s = document.createElement("span");
+      s.textContent = `Inventário(s): ${ordenarNumInv(invs).join(", ")}`;
+      ids.appendChild(s);
+    }
+    card.appendChild(ids);
+    box.appendChild(card);
+  });
+
+  if (st) {
+    const total = lista.length === VG.vigas.length ? `${lista.length} viga(s)` : `${lista.length} de ${VG.vigas.length} viga(s)`;
+    st.textContent = total + (sel.length ? ` · ${registradas} registrada(s) no(s) inventário(s) ${sel.join(", ")}` : "");
+  }
 }
 
 async function onGruaEq() {
@@ -1841,6 +2005,70 @@ async function listarInventario(c9) {
     const li = document.createElement("li");
     li.appendChild(btn);
     ul.appendChild(li);
+  });
+}
+
+/* =========================
+   CONSULTAR INVENTÁRIO: itens por inventário (vários NumInv → todas as linhas, em ordem de linha)
+========================= */
+
+const INVSEL = { numinvs: null, sel: new Set(), seq: 0 };
+
+async function carregarInvSel() {
+  const resumo = document.getElementById("invsel-resumo");
+  if (resumo && !INVSEL.numinvs) resumo.textContent = "Carregando…";
+  try {
+    const j = await buscarInvResumo();
+    INVSEL.numinvs = j.numinvs;
+    podarSelecaoInv(INVSEL.sel, j.numinvs);
+    renderOpcoesInv("invsel-opcoes", "invsel-resumo", j.numinvs, INVSEL.sel, listarLinhasInvSel);
+    if (INVSEL.sel.size) listarLinhasInvSel();
+  } catch (err) {
+    logDebug("Erro inv_resumo (Consultar Inventário): " + err);
+    if (resumo) resumo.textContent = "Erro ao carregar os inventários (ver Debug)";
+  }
+}
+
+async function listarLinhasInvSel() {
+  const ul = document.getElementById("invsel-lista");
+  const st = document.getElementById("invsel-status");
+  const seq = ++INVSEL.seq;
+  ul?.replaceChildren();
+  const sel = ordenarNumInv(INVSEL.sel);
+  if (!sel.length) { if (st) st.textContent = ""; return; }
+  if (st) st.textContent = `Buscando as linhas do(s) inventário(s) ${sel.join(", ")}…`;
+
+  let j = null;
+  try {
+    j = await eqGetJson(`${ENDPOINT_REGISTRO}?mode=linhas_inv&numinvs=${encodeURIComponent(sel.join(","))}&t=${Date.now()}`);
+  } catch (err) {
+    logDebug("Erro linhas_inv: " + err);
+  }
+  if (seq !== INVSEL.seq) return; // a seleção mudou enquanto buscava
+
+  if (!(j && j.ok && Array.isArray(j.itens))) {
+    if (st) st.textContent = "Falha ao buscar as linhas (ver Debug)." + (j && j.error ? ` ${j.error}` : "");
+    return;
+  }
+  if (!j.itens.length) {
+    if (st) st.textContent = `Nenhuma linha no(s) inventário(s) ${sel.join(", ")}.`;
+    return;
+  }
+  const extra = j.truncado ? ` (mostrando ${j.itens.length} de ${j.total})` : "";
+  if (st) st.textContent = `${j.total} linha(s) no(s) inventário(s) ${sel.join(", ")}${extra}`;
+
+  [...j.itens].sort((a, b) => a.row - b.row).forEach(d => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "item-inv";
+    btn.textContent =
+      `Linha ${d.row} – [${d.numInv || "—"}] – ${d.campo1 || ""} – Individual ${d.campo2 || ""} – ` +
+      `Pátio ${d.loc || ""} – Rua ${d.rua || ""} – Andar ${d.andar || ""} – ${d.dataHora || ""}` +
+      (d.usuario ? ` – ${d.usuario}` : "");
+    btn.addEventListener("click", () => abrirLinhaInventario(d.row));
+    const li = document.createElement("li");
+    li.appendChild(btn);
+    ul?.appendChild(li);
   });
 }
 

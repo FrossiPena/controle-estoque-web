@@ -1,13 +1,13 @@
-<!-- index.html - v5.19.0 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento) -->
+<!-- index.html - v5.20.0 (Login + Consulta ítem + Cadastro com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.19.0" />
+  <meta name="app-version" content="v5.20.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.19.0" />
+  <link rel="stylesheet" href="style.css?v=5.20.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -44,7 +44,8 @@
       <button type="button" data-screen="cadastro">2) Cadastro</button>
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
       <button type="button" data-screen="equipamento">4) Equipamento</button>
-      <button type="button" data-screen="debug">5) Debug</button>
+      <button type="button" data-screen="acessorios">5) Acessórios</button>
+      <button type="button" data-screen="debug">6) Debug</button>
     </nav>
 
     <div class="sidebar-footer">
@@ -307,6 +308,49 @@
           <button type="button" id="btn-abrirfoto4" onclick="abrirFoto(4)" disabled>Abrir Foto 4</button>
         </div>
       </div>
+
+      <div class="secao">
+      <h3>Itens por inventário</h3>
+      <p class="secao-info">Marque um ou mais inventários para ver todas as linhas registradas neles, em ordem de linha.
+        Toque em uma linha para abri-la acima.</p>
+      <details class="eq-inv" id="invsel">
+        <summary id="invsel-resumo">Carregando…</summary>
+        <div class="eq-inv-opcoes" id="invsel-opcoes"></div>
+      </details>
+      <p id="invsel-status" class="lista-inv-titulo"></p>
+      <ul id="invsel-lista" class="lista-inv"></ul>
+      </div>
+    </section>
+
+    <!-- 5) Acessórios -->
+    <section class="frame" id="screen-acessorios" hidden>
+      <h2>Acessórios</h2>
+
+      <div class="secao">
+      <h3>Vigas</h3>
+      <p class="secao-info">Peças registradas no inventário com código começando por "V." (ordem alfabética).</p>
+
+      <label class="campo-label">Conferir inventário(s)</label>
+      <details class="eq-inv" id="vg-inv">
+        <summary id="vg-inv-resumo">Carregando…</summary>
+        <div class="eq-inv-opcoes" id="vg-inv-opcoes"></div>
+      </details>
+      <p class="secao-info">Verde = registrada nos inventários marcados · vermelho = não registrada neles. Toque para consultar.</p>
+
+      <div class="vg-filtros">
+        <label class="campo-label" for="vg-tipo">Tipo</label>
+        <select id="vg-tipo"></select>
+        <label class="campo-label" for="vg-secao">Seção</label>
+        <select id="vg-secao"></select>
+        <label class="campo-label" for="vg-diametro">Diâmetro (mm)</label>
+        <select id="vg-diametro"></select>
+        <label class="campo-label" for="vg-comprimento">Comprimento (mm)</label>
+        <select id="vg-comprimento"></select>
+      </div>
+
+      <p id="vg-status" class="secao-info"></p>
+      <div id="vg-lista" class="eq-lista"></div>
+      </div>
     </section>
 
     <!-- 4) Equipamento -->
@@ -369,7 +413,7 @@
       <p id="aj-status" class="secao-info"></p>
     </section>
 
-    <!-- 5) Debug -->
+    <!-- 6) Debug -->
     <section class="frame" id="screen-debug" hidden>
       <h2>Debug</h2>
 
@@ -404,7 +448,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.19.0"></script>
+  <script src="app.js?v=5.20.0"></script>
 </body>
 </html>
 

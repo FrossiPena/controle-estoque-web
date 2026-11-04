@@ -1,3 +1,4 @@
+// v5.10-inv - linhas_inv: todas as linhas dos NumInv pedidos (numinvs=1,2,3), em ordem de linha
 // v5.9-inv - Usuário "consulta" (genérico, só leitura): log_mov, clear_lin e upload_foto são recusados
 // v5.8-inv - Inventário: A..N
 // A campo1 | B campo2 | C loc | D rua | E andar | F gps | G dataHora | H numInv
@@ -8,14 +9,16 @@
 // ultimo_inv: retorna a linha mais recente (de baixo para cima) com campo1 + campo2 informados
 // lista_inv: todas as linhas com campo1 (qualquer campo2), mais recente primeiro
 // ultimo_numinv: último valor preenchido da coluna H (NumInv), de baixo para cima
+// linhas_inv: linhas (não limpas) cujo NumInv (H) está em numinvs, em ordem de linha (até LINHAS_MAX)
 // inv_resumo: números de inventário (H) existentes + mapa "código9|individual" -> {NumInv: linha mais recente}
 // log_mov: grava sob LockService (fila de até LOCK_ESPERA_MS) para cada registro receber a própria linha
 
-const SCRIPT_VERSION = "v5.9-inv";
+const SCRIPT_VERSION = "v5.10-inv";
 const USUARIO_CONSULTA = "consulta";          // login genérico só de leitura
 const MODOS_GRAVACAO = ["log_mov", "clear_lin"]; // + doPost upload_foto
 const LOCK_ESPERA_MS = 10000; // espera máxima pela vez de gravar; depois responde "servidor ocupado"
 const LISTA_MAX = 200; // limite de itens do lista_inv
+const LINHAS_MAX = 5000; // limite de itens do linhas_inv
 const NCOLS = 14; // A..N
 
 const INVENTARIO_ID  = "1CheE1Vpy-hldpiSbl6EC79VI_8DMxDmJ74XW8jevzN8";
@@ -157,6 +160,27 @@ function doGet(e) {
         if (itens.length < LISTA_MAX) itens.push(Object.assign({ row: i + 2 }, rowToData_(v)));
       }
 
+      return json_({ ok:true, version: SCRIPT_VERSION, itens, total, truncado: total > itens.length });
+    }
+
+    if (mode === "linhas_inv") {
+      const pedidos = String(p.numinvs || "").split(",").map(s => s.trim()).filter(Boolean);
+      if (!pedidos.length) return json_({ ok:false, version: SCRIPT_VERSION, error:"numinvs é obrigatório" });
+      const sel = new Set(pedidos);
+
+      const sh = getSheet_();
+      const last = sh.getLastRow();
+      if (last < 2) return json_({ ok:true, version: SCRIPT_VERSION, itens:[], total:0 });
+
+      const values = sh.getRange(2, 1, last - 1, NCOLS).getValues();
+      const itens = [];
+      let total = 0;
+      values.forEach((v, i) => {
+        if (String(v[0] || "").trim() === "") return;                 // linha limpa
+        if (!sel.has(String(v[7] == null ? "" : v[7]).trim())) return; // outro inventário
+        total++;
+        if (itens.length < LINHAS_MAX) itens.push(Object.assign({ row: i + 2 }, rowToData_(v)));
+      });
       return json_({ ok:true, version: SCRIPT_VERSION, itens, total, truncado: total > itens.length });
     }
 

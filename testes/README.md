@@ -27,7 +27,7 @@ npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/S
 - `consolidado.test.js`: modos do script (compatíveis, ajuste com/sem outro desenho, inclusão, `verificar_peca`,
   `machinecards_por_gt`, compatíveis lotados).
 - `navegador.test.js`: sobe um servidor local, intercepta `script.google.com` com o mock e percorre
-  Cadastro → ajuste → Equipamento.
+  Cadastro → ajuste → Equipamento → Consultar Inventário (itens por inventário) → Acessórios (vigas).
 - `duplo.test.js`: alimentação dupla. Registrar/deletar/foto/ajuste chegam ao `espelho` com a mesma linha do Google;
   Google recusou → nada vai ao Supabase; token vencido → novo login; Supabase fora do ar → app normal e falha no
   rodapé; usuário `consulta` não chama o Supabase.

@@ -28,10 +28,22 @@ const servidor = http.createServer((req, res) => {
     const erros = [];
     page.on("pageerror", e => erros.push(e.message));
     page.on("dialog", d => d.dismiss());
+    // Inventário simulado: inventários 5 e 6, duas vigas (código "V.") e uma peça comum
+    const LINHAS = [
+      { row: 1902, numInv: "6", campo1: "V.I.T.324.4000.0.0-01", campo2: "1", loc: "2", rua: "", andar: "", dataHora: "2026-11-04 10:00:00", usuario: "real" },
+      { row: 1900, numInv: "5", campo1: "V.V.T.226.5100.60.60-02", campo2: "2", loc: "3", rua: "", andar: "", dataHora: "2026-11-04 09:37:48", usuario: "real" },
+      { row: 1901, numInv: "5", campo1: "146000231", campo2: "1103", loc: "1", rua: "A", andar: "2", dataHora: "2026-11-04 09:40:00", usuario: "real" },
+    ];
+    const INV_RESUMO = { ok: true, numinvs: [{ numInv: "5", registros: 2 }, { numInv: "6", registros: 1 }],
+      chaves: { "V.V.T.226.5100.60.60-02|2": { "5": 1900 }, "V.I.T.324.4000.0.0-01|1": { "6": 1902 }, "146000231|1103": { "5": 1901 } } };
+    const PEDIDOS_LINHAS = [];
     await ctx.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
     await ctx.route("https://script.google.com/**", r => {
       const u = new URL(r.request().url()); const p = Object.fromEntries(u.searchParams);
-      const inventario = { log_mov: { ok: true, appended: true, row: 90, sheet: "Mov", dataHora: "x" }, ultimo_numinv: { ok: true, numInv: "5" }, inv_resumo: { ok: true, numinvs: [], chaves: {} } };
+      const inventario = { log_mov: { ok: true, appended: true, row: 90, sheet: "Mov", dataHora: "x" }, ultimo_numinv: { ok: true, numInv: "5" }, inv_resumo: INV_RESUMO,
+        linhas_inv: { ok: true, itens: LINHAS.filter(l => String(p.numinvs || "").split(",").includes(l.numInv)), total: 0 } };
+      inventario.linhas_inv.total = inventario.linhas_inv.itens.length;
+      if (p.mode === "linhas_inv") PEDIDOS_LINHAS.push(p.numinvs);
       const body = u.pathname.includes("AKfycbxClcs2") ? (inventario[p.mode] || { ok: true }) : m.q(p);
       r.fulfill({ body: JSON.stringify(body), contentType: "application/json" });
     });
@@ -111,13 +123,49 @@ const servidor = http.createServer((req, res) => {
     assert.match(await page.inputValue("#gruas-aplicaveis"), /Por ajuste: GT-13 \(inclusão\)/);
     console.log("ok - Consulta mostra compatíveis e ajustes");
 
+    // H) Consultar Inventário: marca vários inventários → todas as linhas, em ordem de linha
+    await page.evaluate(() => showScreen("inventario"));
+    await page.waitForFunction(() => document.querySelectorAll("#invsel-opcoes input").length === 2);
+    await page.click("#invsel summary");
+    await page.check('#invsel-opcoes input[value="5"]');
+    await page.waitForFunction(() => document.querySelectorAll("#invsel-lista .item-inv").length === 2);
+    await page.check('#invsel-opcoes input[value="6"]');
+    await page.waitForFunction(() => document.querySelectorAll("#invsel-lista .item-inv").length === 3);
+    const linhas = await page.$$eval("#invsel-lista .item-inv", bs => bs.map(b => b.textContent.match(/^Linha (\d+)/)[1]));
+    assert.deepStrictEqual(linhas, ["1900", "1901", "1902"]);
+    assert.strictEqual(PEDIDOS_LINHAS.at(-1), "5,6");
+    assert.match(await page.textContent("#invsel-status"), /3 linha\(s\) no\(s\) inventário\(s\) 5, 6/);
+    await page.locator("#invsel-lista .item-inv").nth(1).click();
+    assert.strictEqual(await page.inputValue("#linha_consulta"), "1901");
+    assert.strictEqual(await page.locator("#invsel-lista .item-inv").count(), 3, "abrir uma linha não refaz a lista");
+    console.log("ok - Consultar Inventário: vários inventários, linhas em ordem");
+
+    // I) Acessórios → Vigas: só códigos "V.", ordem alfabética, filtro e verde/vermelho por inventário
+    await page.evaluate(() => showScreen("acessorios"));
+    await page.waitForFunction(() => document.querySelectorAll("#vg-lista .eq-item").length === 2);
+    const vigas = await page.$$eval("#vg-lista .eq-item-titulo", ts => ts.map(t => t.textContent));
+    assert.deepStrictEqual(vigas, ["V.I.T.324.4000.0.0-01", "V.V.T.226.5100.60.60-02"]);
+    assert.match(await page.textContent("#vg-lista"), /Viga completa · Tubular · Ø 226 mm · 5100 mm · furos 60\/60/);
+    await page.click("#vg-inv summary");
+    await page.check('#vg-inv-opcoes input[value="5"]');
+    assert.strictEqual(await page.locator("#vg-lista .eq-item-ok").count(), 1);
+    assert.strictEqual(await page.locator("#vg-lista .eq-item-falta").count(), 1);
+    await page.selectOption("#vg-tipo", "I");
+    assert.strictEqual(await page.locator("#vg-lista .eq-item").count(), 1);
+    assert.match(await page.textContent("#vg-status"), /1 de 2 viga\(s\) · 0 registrada/);
+    await page.selectOption("#vg-tipo", "");
+    await page.locator("#vg-lista .vg-id").last().click();
+    assert.strictEqual(await page.inputValue("#campo1"), "V.V.T.226.5100.60.60-02");
+    assert.strictEqual(await page.inputValue("#campo2"), "2");
+    console.log("ok - Acessórios: vigas em ordem, filtro, inventário e consulta");
+
     // G) usuário consulta: menu só Consulta e Equipamento, sem "+ Inserir compatível"
     const pc = await ctx.newPage();
     pc.on("pageerror", e => erros.push(e.message));
     await pc.addInitScript(() => localStorage.setItem("ce_auth", JSON.stringify({ user: "consulta", pass: "y" })));
     await pc.goto(url);
     const visiveis = await pc.$$eval(".nav button", bs => bs.filter(b => !b.hidden).map(b => b.dataset.screen));
-    assert.deepStrictEqual(visiveis, ["consulta", "equipamento"]);
+    assert.deepStrictEqual(visiveis, ["consulta", "equipamento", "acessorios"]);
     await pc.evaluate(() => showScreen("equipamento"));
     await pc.waitForFunction(() => document.getElementById("eq-grua").options.length > 1);
     await pc.selectOption("#eq-grua", "280 EC-H 12 Litronic");

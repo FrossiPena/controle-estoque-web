@@ -30,7 +30,7 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 - Toda chamada (exceto `diag`) exige `user`/`pass` validados contra a propriedade `USUARIOS`.
 - Usuário `consulta` (login genérico, cadastrado no `USUARIOS` dos dois scripts): só leitura. Os scripts recusam
   (`semPermissao:true`, sem deslogar) `compat_inserir`, `gravar_ajuste` (Consolidado), `log_mov`, `clear_lin` e
-  `upload_foto` (Inventário); o app (`ehUsuarioConsulta`) mostra só Consulta ítem e Equipamento, sem "+ Inserir compatível".
+  `upload_foto` (Inventário); o app (`ehUsuarioConsulta`) mostra só Consulta ítem, Equipamento e Acessórios, sem "+ Inserir compatível".
   Função nova que grave: incluir o modo em `MODOS_GRAVACAO` do script.
 - Planilhas lidas pelo script do Consolidado: aba `MachineCards Consolidado` (própria) e RELAÇÃO DE PRODUTOS
   (`RELACAO_SHEET_ID`: `Gruas lista`, `Validação` e uma aba por modelo de grua).
@@ -82,17 +82,22 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
   (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`
   (`reduzirFoto`: acima de Full HD reduz para 1080 no lado menor, JPEG 0,85; se falhar, envia o original).
 - **inventario** (Consultar Inventário): `listarInventario`, `buscaCompletaUI`, `consultarLinhaInventarioUI`,
-  `deletarLinhaInventarioUI`.
+  `deletarLinhaInventarioUI`; "Itens por inventário" (`carregarInvSel` → `listarLinhasInvSel`, `linhas_inv`, estado `INVSEL`).
+- **acessorios** (Acessórios → Vigas): `carregarVigas` (lista pelas chaves do `inv_resumo` com código "V.", ordem alfabética),
+  `partesViga` (`V.TIPO.SEÇÃO.DIÂMETRO.COMPRIMENTO.FURO_E.FURO_D-SEQ`), filtros `preencherFiltrosVigas`, `renderVigas`; estado `VG`.
+  Código V é inventado pelo usuário (não é Código C) e não é validado: fora do padrão também aparece.
 - **equipamento**: grua → GT → comprimento de lança (`carregarGruasEq`, `onGruaEq`, `onGtEq`, `renderListaEq`);
   confronta com inventários (`carregarInventariosEq`, `inventariadoEq`); "+ Inserir compatível" = `abrirCompatEq`.
 - **ajuste**: `abrirAjuste` → `onGtAjuste` → `renderPosicoesAjuste` → `escolherPosicaoAjuste` (IDs de fábrica /
   inclusão) → `renderCompatAjuste` (outro desenho?) → `atualizarBotaoAjuste` → `gravarAjuste`. Estado em `AJ`.
 - **debug**: `logDebug`, `copiarDebug`. Login: `fazerLogin`/`mostrarLogin`, credenciais em `localStorage.ce_auth`.
 Estado da tela Equipamento em `EQ` (caches `lancasPorGrua`, `mcPorGt`…); helpers `eqGetJson`, `eqChaveC`, `eqNorm`, `eqEl`.
+Caixas de inventário (Equipamento, Consultar Inventário, Acessórios; cada tela com sua seleção): `buscarInvResumo`,
+`renderOpcoesInv`, `podarSelecaoInv`, `ordenarNumInv`.
 
 Modos do `doGet`:
-- `inventario.gs`: diag, login, diag_drive, log_mov, get_lin, ultimo_inv, lista_inv, inv_resumo, ultimo_numinv,
-  clear_lin; `doPost` upload_foto (slot 1..4 → colunas I..L).
+- `inventario.gs`: diag, login, diag_drive, log_mov, get_lin, ultimo_inv, lista_inv, linhas_inv (`numinvs=1,2`), inv_resumo,
+  ultimo_numinv, clear_lin; `doPost` upload_foto (slot 1..4 → colunas I..L).
 - `consolidado.gs`: diag, login, gruas_lista, gts_por_grua, gts_todos, lancas_grua (`todas=1` = todas as peças),
   h_por_l, gruas (diretos pela MachineCards + `compat` pela linha da RELAÇÃO + `ajustes`), exata (aplica AJUSTE), patrimonio_por_h (aplica AJUSTE), i_por_h, desc_pt, machinecards_por_gt (já aplica AJUSTE/inclusões),
   compat_previa, compat_inserir, verificar_peca, gravar_ajuste (`tipo=inclusao`; `compat=1` + `codigo_c_novo`).
