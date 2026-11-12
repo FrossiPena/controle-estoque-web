@@ -14,6 +14,8 @@ npx playwright install chromium webkit
 npm test                 # todos
 npm run test:script      # só o script do Consolidado (não precisa do Playwright)
 npm run test:converter   # conversor das planilhas para o Supabase (não precisa do Playwright)
+npm run test:envio       # conversor do envio de grua (não precisa do Playwright)
+npm run test:configurador # lista de peças e distribuição nos veículos (MOSTRAR=1 imprime os veículos)
 npm run test:navegador   # app no navegador (Chromium headless)
 npm run test:duplo       # alimentação dupla Google + Supabase (Chromium headless)
 npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/Safari)
@@ -33,6 +35,12 @@ npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/S
   rodapé; usuário `consulta` não chama o Supabase.
 - `converter.test.js`: monta um .xlsx (fixture da RELAÇÃO + Movimentacoes/MachineCards/AJUSTE) e confere os CSVs de
   `migracao/converter.mjs` (id = linha, data/hora com fuso, grupos e quantidades por lança, aba desconhecida avisada).
+- `envio.test.js`: monta, com dados inventados, RELAÇÃO com preço + Base de Dados Grua + Consolidado e confere os
+  CSVs de `migracao/envio.mjs` (uma peça por código, preço por modelo, regras com condições numéricas, pai, forro,
+  prancha, código 9 convertido, conflitos no relatório).
+- `configurador.test.js`: `supabase/functions/_shared/configurador.mjs` com dados inventados: lista pela lança da
+  RELAÇÃO + torre/base/lastro das regras (chumbador × carro inferior), nada duplicado; distribuição na ordem de montagem,
+  prancha só para cabine/mecanismo, peça de 12,42 m na carreta 15 m, filha com o pai, forro, limites de comprimento e peso.
 - `foto.test.js`: `reduzirFoto`/`uploadFotoParaLinha` no Chromium e no WebKit (Safari): foto 4032x3024 chega com
   1080 no lado menor, foto com rotação EXIF continua em pé, foto pequena vai como está.
 

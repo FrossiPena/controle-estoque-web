@@ -69,6 +69,15 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 - Login: mesmo usuário/senha no Supabase Auth, e-mail `nome@estoque.realguindastes.com` (`SUPABASE_EMAIL_DOMINIO`);
   token só na memória (`SB`), novo login quando vence. `consulta` não chama o Supabase.
 - Carga inicial: `migracao/converter.mjs` (.xlsx baixado → CSV para o Table Editor); saída em `migracao/saida/` (fora do Git).
+- Envio de grua (nasce no Supabase, sem Google): cadastros em `supabase/migrations/20261112120000_envio_cadastros.sql`
+  (papéis `usuario_papeis`: admin/cadastro/expedicao/operacional/consulta; `pecas` = uma linha por código com peso,
+  comprimento, preço e Sapiens, forro, veículo exigido: mesmo Código C = mesma peça em qualquer modelo, diferença é erro
+  de cadastro; `config_regras` = Base de Dados Grua). Carga: `migracao/envio.mjs` → tabelas `carga_*` →
+  `aplicar_carga_envio()` (só atualiza; não apaga o que foi editado no app) + `inconsistencias.csv`. Ver `migracao/README.md`.
+  Configurador (funções puras, Deno e Node): `supabase/functions/_shared/configurador.mjs` — `montarLista` (RELAÇÃO pela
+  lança = fixo da grua; regras só para torre/base/lastro, carro inferior OU chumbador; lastro escolhido pelo usuário;
+  ajustes do GT valem na conferência por QR, não na lista) e `distribuirVeiculos` (ordem de montagem, prancha exclusiva,
+  filha com o pai sem ocupar comprimento, forro por baixo, limites de comprimento/peso; nunca trava, avisa).
 - Falhas: `estoque.espelho_log`. Próximas fases (consultas lendo do Supabase; corte) em `migracao/README.md` e no plano.
 
 ## Frontend

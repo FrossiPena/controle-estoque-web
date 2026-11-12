@@ -49,6 +49,20 @@ Se o painel recusar o domínio, trocar `SUPABASE_EMAIL_DOMINIO` no `app.js` por 
 Refazer a carga (por exemplo depois de editar a RELAÇÃO à mão): `truncate` das tabelas e repetir 2–4.
 Durante a fase dupla, as linhas novas chegam pelo espelho; a carga só cobre o que já existia.
 
+## 4b. Envio de grua (cadastros do configurador)
+Tabelas novas em `supabase/migrations/20261112120000_envio_cadastros.sql` (só no Supabase; o Google não é mais usado
+para isso): papéis (`usuario_papeis`), `modelos`, `veiculos`, `pecas` (uma linha por Código C: peso, comprimento,
+preço, Sapiens, forro, veículo exigido; mesmo código = mesma peça em qualquer modelo), `bases`, `config_regras`
+(Base de Dados Grua), clientes/transportadoras/motoristas/placas, `cadastro_log`.
+1. `node migracao/envio.mjs "RELAÇÃO com preço.xls" "Base de Dados Grua.xlsx" Consolidado.xlsx`
+   → `migracao/saida/envio/carga_*.csv` e `inconsistencias.csv` (o Consolidado converte códigos 9 em Código C;
+   divergências entre abas para o mesmo código são erro de cadastro: o conversor usa o valor mais frequente e lista).
+2. Table Editor → schema `estoque` → importar cada `carga_*.csv` na tabela de mesmo nome.
+3. SQL Editor: `select estoque.aplicar_carga_envio();` — **só atualiza**: peça editada no app (`atualizado_por`)
+   não é sobrescrita; regras da planilha são trocadas pelas novas, as criadas/editadas no app ficam.
+4. Preencher comprimento útil e carga máxima em `veiculos`; primeiro admin:
+   `insert into estoque.usuario_papeis (usuario, papel) values ('fernando', 'admin');`
+
 ## 5. Acompanhar
 - Falhas: `select * from estoque.espelho_log where not ok order by id desc;` (o `detalhe` traz o pedido completo).
 - Tudo de um usuário: `select * from estoque.espelho_log where usuario = 'fernando' order by id desc limit 50;`
