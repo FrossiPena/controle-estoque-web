@@ -1,13 +1,13 @@
-<!-- index.html - v5.22.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v5.22.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.22.0" />
+  <meta name="app-version" content="v5.22.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.22.0" />
+  <link rel="stylesheet" href="style.css?v=5.22.1" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -514,6 +514,7 @@
         <select id="env-telesc"><option value="nao">Não</option><option value="sim">Sim</option></select>
         <label class="campo-label" for="env-altura">Altura (m)</label>
         <select id="env-altura"></select>
+        <p id="env-altura-aviso" class="env-aviso"></p>
         <label class="campo-label" for="env-lastro">Lastro (t)</label>
         <select id="env-lastro"></select>
         <div class="env-acoes"><button type="button" id="env-btn-previa">Gerar romaneios</button></div>
@@ -667,7 +668,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.22.0"></script>
+  <script src="app.js?v=5.22.1"></script>
 </body>
 </html>
 

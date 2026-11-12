@@ -1,3 +1,4 @@
+// v5.22.1 - Envio de grua: base sem regra de torre aparece marcada e a altura vazia explica o que falta
 // v5.22.0 - Telas 6) Envio de grua (envios por cliente – GT, configurador → romaneios por veículo, conferência por
 //          QR/digitada, mover peça, fotos, dados da carreta, confirmar) e 7) Cadastros (peças por Código C, veículos,
 //          clientes, transportadoras, motoristas, placas, papéis). Só Supabase (função "romaneio"); Debug passa a ser 8
@@ -46,7 +47,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.22.0";
+const APP_VERSION = "v5.22.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2806,7 +2807,11 @@ function envModeloMudou() {
   if (!lancas.length) envOpcao(lan, "", modelo ? "Sem lanças (RELAÇÃO não carregada?)" : "Escolha o modelo");
   lancas.forEach(l => envOpcao(lan, l));
   const bas = envEl("env-base"); bas.replaceChildren(); envOpcao(bas, "", "Selecione a base…");
-  op.bases.filter(b => eqNorm(b.modelo) === eqNorm(modelo)).forEach(b => envOpcao(bas, b.base));
+  // Bases sem regra de torre (aba Altura da Base de Dados) ficam marcadas: não há altura para escolher
+  const comTorre = new Set(op.torres.filter(t => eqNorm(t.modelo) === eqNorm(modelo)).map(t => eqNorm(t.base)));
+  const temTorreSemBase = op.torres.some(t => eqNorm(t.modelo) === eqNorm(modelo) && !t.base);
+  op.bases.filter(b => eqNorm(b.modelo) === eqNorm(modelo))
+    .forEach(b => envOpcao(bas, b.base, b.base + (comTorre.has(eqNorm(b.base)) || temTorreSemBase ? "" : " (sem alturas cadastradas)")));
   envBaseMudou();
 }
 
@@ -2814,9 +2819,23 @@ function envBaseMudou() {
   const op = ENV.opcoes, modelo = envEl("env-modelo").value, base = envEl("env-base").value;
   const telesc = envEl("env-telesc").value === "sim";
   const doModelo = x => eqNorm(x.modelo) === eqNorm(modelo) && (!x.base || eqNorm(x.base) === eqNorm(base));
-  const alt = envEl("env-altura"); alt.replaceChildren(); envOpcao(alt, "", "Selecione a altura…");
-  [...new Set(op.torres.filter(t => doModelo(t) && (t.telescopagem == null || t.telescopagem === telesc)).map(t => t.altura_m))]
-    .sort((a, b) => a - b).forEach(a => envOpcao(alt, a, fmtNum(a, 2) + " m"));
+  const alt = envEl("env-altura"); alt.replaceChildren();
+  const alturas = [...new Set(op.torres.filter(t => doModelo(t) && (t.telescopagem == null || t.telescopagem === telesc)).map(t => t.altura_m))]
+    .sort((a, b) => a - b);
+  const aviso = envEl("env-altura-aviso");
+  if (alturas.length || !modelo || !base) {
+    envOpcao(alt, "", "Selecione a altura…");
+    if (aviso) aviso.textContent = "";
+  } else {
+    envOpcao(alt, "", "Sem altura cadastrada");
+    // Onde há altura para este modelo (base/telescopagem), para o usuário saber o que falta na Base de Dados
+    const combos = [...new Set(op.torres.filter(t => eqNorm(t.modelo) === eqNorm(modelo))
+      .map(t => `${t.base || "qualquer base"} (telescopagem ${t.telescopagem ? "sim" : "não"})`))];
+    if (aviso) aviso.textContent = combos.length
+      ? `Sem regra de torre para ${base} / telescopagem ${telesc ? "sim" : "não"}. Há alturas para: ${combos.join("; ")}.`
+      : `O modelo ${modelo} não tem nenhuma regra de torre (aba Altura da Base de Dados Grua): a torre fica fora da lista; inclua-a à mão na prévia ou cadastre as regras.`;
+  }
+  alturas.forEach(a => envOpcao(alt, a, fmtNum(a, 2) + " m"));
   const las = envEl("env-lastro"); las.replaceChildren(); envOpcao(las, "", "Sem lastro");
   [...new Set(op.lastros.filter(doModelo).map(l => l.lastro_t))].sort((a, b) => a - b).forEach(l => envOpcao(las, l, fmtNum(l, 2) + " t"));
 }

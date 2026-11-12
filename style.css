@@ -1,4 +1,4 @@
-/* style_v5.22.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.22.1.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -491,3 +491,4 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .env-hist{ margin-top: 10px; font-size: 13px; }
 .cad-form{ border: 1px solid #d7dbe2; border-radius: 8px; padding: 8px 10px; margin: 8px 0; background: #fff; }
 .cad-pendente{ border-left: 5px solid #e0a100; }
+.env-aviso{ color: #8a5a00; font-size: 12px; margin: 4px 0 0; }
