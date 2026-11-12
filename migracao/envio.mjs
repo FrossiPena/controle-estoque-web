@@ -59,7 +59,13 @@ function codigoUnico(bruto, onde) {
 
 // ---------- Leitura das planilhas ----------
 const livros = args.map(a => ({ arq: path.basename(a), wb: XLSX.read(fs.readFileSync(a), { cellDates: false }) }));
-const linhas = (wb, aba) => XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: "", blankrows: true });
+// Sempre a partir de A1: o .xlsx baixado do Google pode começar o !ref na 1ª coluna/linha usada (B2…)
+const linhas = (wb, aba) => {
+  const ws = wb.Sheets[aba];
+  const ref = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  if (ref) { ref.s.r = 0; ref.s.c = 0; }
+  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "", blankrows: true, ...(ref ? { range: ref } : {}) });
+};
 const acharAba = (wb, nome) => wb.SheetNames.find(n => normNome(n) === normNome(nome));
 
 const relacao = livros.find(l => l.wb.SheetNames.some(n => (linhas(l.wb, n)[1] || []).some(h => normNome(h) === "codigo lbr")));

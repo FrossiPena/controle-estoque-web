@@ -80,7 +80,7 @@ function ajustes(rows) {
   const nomes = ["datahora", "usuario", "gt", "modelo", "posicao", "descricao", "c9_antigo", "id_antigo",
                  "c9_novo", "id_novo", "alerta", "obs", "codigo_c_novo"];
   rows.forEach((r, i) => {
-    if (normNome(r[0]) === "datahora" || r.every(v => txt(v) === "")) return;   // cabeçalho
+    if (["datahora", "data"].includes(normNome(r[0])) || r.every(v => txt(v) === "")) return;   // cabeçalho(s)
     const o = Object.fromEntries([["id", i + 1], ...nomes.map((n, j) => [n, txt(r[j])])]);
     o.datahora = dataHora(r[0]);
     emitir("ajustes", ["id", ...nomes], o);
@@ -146,11 +146,19 @@ function abaModelo(aba, rows) {
 
 // ---------- Leitura ----------
 
+// Sempre a partir de A1: o .xlsx baixado do Google pode começar o !ref na 1ª coluna/linha usada (B2…),
+// e aí r[3] deixaria de ser a coluna D e o id (= linha da planilha) sairia deslocado
+function linhasDesdeA1(ws) {
+  const ref = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
+  if (ref) { ref.s.r = 0; ref.s.c = 0; }
+  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "", blankrows: true, ...(ref ? { range: ref } : {}) });
+}
+
 const naoReconhecidas = [];
 for (const arq of args) {
   const wb = XLSX.read(fs.readFileSync(arq), { cellDates: false });
   for (const aba of wb.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: "", blankrows: true });
+    const rows = linhasDesdeA1(wb.Sheets[aba]);
     const n = normNome(aba);
     if (n === "movimentacoes") movimentacoes(rows);
     else if (n === "machinecards consolidado") machinecards(rows);
