@@ -4,3 +4,7 @@ project_id = "controle-estoque"
 [functions.espelho]
 # A função valida o token do Supabase Auth ela mesma (e responde ao OPTIONS do CORS, que vem sem token)
 verify_jwt = false
+
+[functions.romaneio]
+# Envio de grua: valida o token do Supabase Auth e os papéis (estoque.usuario_papeis) ela mesma
+verify_jwt = false

@@ -1,3 +1,6 @@
+// v5.22.0 - Telas 6) Envio de grua (envios por cliente – GT, configurador → romaneios por veículo, conferência por
+//          QR/digitada, mover peça, fotos, dados da carreta, confirmar) e 7) Cadastros (peças por Código C, veículos,
+//          clientes, transportadoras, motoristas, placas, papéis). Só Supabase (função "romaneio"); Debug passa a ser 8
 // v5.21.0 - Tela 2.1) Cadastro Acessórios → Viga: código V em campos com dicas, sequencial sugerido
 //          (maior usado + 1), figura do padrão; passa código/individual para o Cadastro
 // v5.20.2 - Acessórios → Vigas: ordem pela linha do inventário, mais novas primeiro (mostra a linha)
@@ -43,7 +46,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.21.0";
+const APP_VERSION = "v5.22.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -108,6 +111,8 @@ function showScreen(key) {
     equipamento: { id: "screen-equipamento", name: "Equipamento" },
     acessorios: { id: "screen-acessorios", name: "Acessórios" },
     ajuste: { id: "screen-ajuste", name: "Ajuste de machine card" },
+    envio: { id: "screen-envio", name: "Envio de grua" },
+    cadastros: { id: "screen-cadastros", name: "Cadastros" },
     debug: { id: "screen-debug", name: "Debug" },
   };
 
@@ -136,6 +141,8 @@ function showScreen(key) {
   if (key === "inventario" && mudou && AUTH.user) carregarInvSel();
   if (key === "acessorios" && mudou && AUTH.user) carregarVigas();
   if (key === "cadacess" && mudou && AUTH.user) carregarCadAcess();
+  if (key === "envio" && mudou && AUTH.user) abrirEnvio();
+  if (key === "cadastros" && mudou && AUTH.user) abrirCadastros();
 }
 
 /* =========================
@@ -505,7 +512,7 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("aj-gt")?.addEventListener("change", onGtAjuste);
   document.getElementById("aj-confirmo")?.addEventListener("input", atualizarBotaoAjuste);
   document.getElementById("aj-gravar")?.addEventListener("click", gravarAjuste);
-  document.getElementById("aj-voltar")?.addEventListener("click", () => showScreen("cadastro"));
+  document.getElementById("aj-voltar")?.addEventListener("click", () => showScreen(AJ.voltar || "cadastro"));
 
   // Equipamento
   document.getElementById("eq-grua")?.addEventListener("change", onGruaEq);
@@ -822,6 +829,13 @@ function processarQRCode(qrCodeMessage) {
   const parte1Original = String(partes[1] || "").trim();
   let parte1Limpo = parte1Original.replace(/^0+/, "");
   if (parte1Limpo === "") parte1Limpo = "0";
+
+  // Envio de grua: a leitura vai para o romaneio aberto (conferência), não para a Consulta
+  if (CURRENT_SCREEN === "envio" && ENV.view === "romaneio") {
+    leituraProcessada = false;
+    lerPecaEnvio(parte0, parte1Limpo, { manual: false });
+    return;
+  }
 
   document.getElementById("codigo-lido").value = qrCodeMessage;
   const lidoCad = document.getElementById("codigo-lido-cad");
@@ -1723,7 +1737,7 @@ function ajStatus(msg) {
 }
 
 async function abrirAjuste(c9, id, conhecido) {
-  Object.assign(AJ, { c9: String(c9), id: String(id), conhecido, gt: "", modelo: "", posicao: null, fab: null, compat: null, codigoCConhecido: "" });
+  Object.assign(AJ, { voltar: "", c9: String(c9), id: String(id), conhecido, gt: "", modelo: "", posicao: null, fab: null, compat: null, codigoCConhecido: "" });
   showScreen("ajuste");
   window.scrollTo(0, 0);
   document.getElementById("aj-peca").textContent = `Peça registrada: código 9 ${c9} · ID ${id}`;
@@ -2680,3 +2694,537 @@ async function uploadFotoParaLinha(row, slot, file) {
   espelhar("foto_link", { row: j.row, slot: j.slot, fotoUrl: j.fotoUrl }); // a foto fica no Drive: só o link
   return j;
 }
+
+/* =========================
+   ENVIO DE GRUA (Supabase, função "romaneio")
+   Lista por cliente – GT → novo envio (configuração → prévia → salvar) → veículos → romaneio (conferência por QR
+   ou digitada, mover peça, fotos, dados da carreta, confirmar). Não usa o Google. Permissões pelos papéis.
+========================= */
+
+const ENV = { papeis: null, usuario: "", opcoes: null, view: "lista", envioId: null, romaneioId: null,
+              previa: null, rom: null, leitorAtivo: false };
+const ROMANEIO_TIMEOUT_MS = 30000;
+
+async function romPost(modo, dados) {
+  const enviar = async () => {
+    if (!SB.token || Date.now() > SB.expira) await sbEntrar();
+    const { raw } = await netFetch(`${SUPABASE_URL}/functions/v1/romaneio`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SB.token}`, apikey: SUPABASE_CHAVE, "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ modo }, dados || {}))
+    }, ROMANEIO_TIMEOUT_MS);
+    let j = null; try { j = JSON.parse(raw); } catch {}
+    return j || { ok: false, error: "resposta inválida: " + String(raw).slice(0, 200) };
+  };
+  try {
+    let j = await enviar();
+    if (j.auth === false) { SB.token = ""; j = await enviar(); }   // token vencido: entra de novo
+    if (!j.ok) logDebug(`romaneio ${modo}: ${j.error || "ok:false"}`);
+    return j;
+  } catch (e) {
+    logDebug(`romaneio ${modo} FALHOU: ${(e && e.message) || e}`);
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+}
+
+const envPode = (...p) => !!ENV.papeis && (ENV.papeis.includes("admin") || p.some(x => ENV.papeis.includes(x)));
+const envEl = (id) => document.getElementById(id);
+function envStatus(msg) { const e = envEl("env-status"); if (e) e.textContent = msg || ""; }
+function envOpcao(sel, valor, texto) { const o = document.createElement("option"); o.value = valor; o.textContent = texto ?? valor; sel.appendChild(o); }
+const fmtNum = (n, casas = 1) => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: casas });
+const ROM_FECHADO = ["confirmado", "nf_solicitada"];
+
+function envView(nome) {
+  ENV.view = nome;
+  ["lista", "novo", "detalhe", "romaneio"].forEach(v => { const e = envEl("env-" + v); if (e) e.hidden = v !== nome; });
+  if (nome !== "romaneio") { ENV.leitorAtivo = false; pararLeitor(); }
+  window.scrollTo(0, 0);
+}
+
+async function abrirEnvio() {
+  envView("lista");
+  envEl("env-envios").replaceChildren();
+  envStatus("Conectando ao Supabase…");
+  const me = await romPost("me");
+  if (!me.ok) { envStatus("Sem acesso ao Supabase: " + (me.error || "acesso negado")); return; }
+  ENV.papeis = me.papeis || []; ENV.usuario = me.usuario;
+  if (!ENV.papeis.length) {
+    envStatus(`Usuário ${me.usuario} sem papel no envio de grua: peça a um admin (Cadastros → Usuários e papéis).`);
+    return;
+  }
+  const op = await romPost("opcoes");
+  if (!op.ok) { envStatus("Erro: " + op.error); return; }
+  ENV.opcoes = op;
+  envEl("env-btn-novo").hidden = !envPode("expedicao");
+  envStatus(`Papéis: ${ENV.papeis.join(", ")}`);
+  await carregarEnvios();
+}
+
+// ---------- Lista ----------
+async function carregarEnvios() {
+  const box = envEl("env-envios");
+  box.replaceChildren(eqEl("p", "secao-info", "Carregando envios…"));
+  const j = await romPost("envios", { todos: envEl("env-todos").checked });
+  box.replaceChildren();
+  if (!j.ok) { box.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); return; }
+  if (!j.envios.length) { box.appendChild(eqEl("p", "secao-info", "Nenhum envio em aberto.")); return; }
+  let grupo = null;
+  j.envios.forEach(e => {
+    const g = `${e.cliente} – ${e.gt}`;
+    if (g !== grupo) { grupo = g; box.appendChild(eqEl("h3", "eq-grupo", g)); }
+    const card = eqEl("button", "env-card");
+    card.type = "button";
+    card.appendChild(eqEl("div", "eq-item-titulo", `${e.obra || "Envio"} #${e.id} · ${e.modelo}`));
+    card.appendChild(eqEl("div", "", `${e.romaneios} veículo(s), ${e.confirmados} confirmado(s) · peças ${e.lidas}/${e.previstas}`));
+    card.appendChild(eqEl("div", "env-sub", `${e.status} · criado por ${e.criado_por} em ${new Date(e.criado_em).toLocaleDateString("pt-BR")}`));
+    card.addEventListener("click", () => abrirEnvioDetalhe(e.id));
+    box.appendChild(card);
+  });
+}
+
+// ---------- Novo envio ----------
+function novoEnvio() {
+  const op = ENV.opcoes;
+  ENV.previa = null;
+  envEl("env-previa").hidden = true;
+  const dl = envEl("env-clientes"); dl.replaceChildren();
+  op.clientes.forEach(c => envOpcao(dl, c.nome));
+  const gt = envEl("env-gt"); gt.replaceChildren();
+  envOpcao(gt, "", op.gts.length ? "Selecione o GT…" : "Sem GTs (carga da Validação)");
+  op.gts.forEach(g => envOpcao(gt, g.gt, `${g.gt} · ${g.modelo || ""}`));
+  const mod = envEl("env-modelo"); mod.replaceChildren(); envOpcao(mod, "", "Selecione o modelo…");
+  op.modelos.forEach(m => envOpcao(mod, m.nome));
+  envModeloMudou();
+  envView("novo");
+}
+
+function envModeloMudou() {
+  const op = ENV.opcoes, modelo = envEl("env-modelo").value;
+  const m = op.modelos.find(x => x.nome === modelo);
+  const lan = envEl("env-lanca"); lan.replaceChildren();
+  const lancas = (m && m.lancas) || [];
+  if (!lancas.length) envOpcao(lan, "", modelo ? "Sem lanças (RELAÇÃO não carregada?)" : "Escolha o modelo");
+  lancas.forEach(l => envOpcao(lan, l));
+  const bas = envEl("env-base"); bas.replaceChildren(); envOpcao(bas, "", "Selecione a base…");
+  op.bases.filter(b => eqNorm(b.modelo) === eqNorm(modelo)).forEach(b => envOpcao(bas, b.base));
+  envBaseMudou();
+}
+
+function envBaseMudou() {
+  const op = ENV.opcoes, modelo = envEl("env-modelo").value, base = envEl("env-base").value;
+  const telesc = envEl("env-telesc").value === "sim";
+  const doModelo = x => eqNorm(x.modelo) === eqNorm(modelo) && (!x.base || eqNorm(x.base) === eqNorm(base));
+  const alt = envEl("env-altura"); alt.replaceChildren(); envOpcao(alt, "", "Selecione a altura…");
+  [...new Set(op.torres.filter(t => doModelo(t) && (t.telescopagem == null || t.telescopagem === telesc)).map(t => t.altura_m))]
+    .sort((a, b) => a - b).forEach(a => envOpcao(alt, a, fmtNum(a, 2) + " m"));
+  const las = envEl("env-lastro"); las.replaceChildren(); envOpcao(las, "", "Sem lastro");
+  [...new Set(op.lastros.filter(doModelo).map(l => l.lastro_t))].sort((a, b) => a - b).forEach(l => envOpcao(las, l, fmtNum(l, 2) + " t"));
+}
+
+function envCfg() {
+  return {
+    gt: envEl("env-gt").value, modelo: envEl("env-modelo").value, lanca_m: envEl("env-lanca").value.replace(/m$/i, ""),
+    base: envEl("env-base").value, telescopagem: envEl("env-telesc").value === "sim",
+    altura_m: envEl("env-altura").value || null, lastro_t: envEl("env-lastro").value || null,
+  };
+}
+
+async function gerarPrevia(redistribuir) {
+  const cfg = envCfg();
+  if (!cfg.gt || !cfg.modelo || !cfg.lanca_m) { envStatus("Escolha GT, modelo e lança."); return; }
+  const dados = { cfg };
+  if (redistribuir && ENV.previa) {
+    dados.itens = ENV.previa.itens.map((it, i) => ({ ...it, qtd: Number(envEl("env-qtd-" + i)?.value) || 0 }));
+  }
+  envStatus("Montando os romaneios…");
+  const j = await romPost("previa", dados);
+  if (!j.ok) { envStatus("Erro: " + j.error); return; }
+  ENV.previa = j;
+  envStatus("");
+  renderPrevia();
+}
+
+function renderPrevia() {
+  const p = ENV.previa;
+  envEl("env-previa").hidden = false;
+  const av = envEl("env-avisos"); av.replaceChildren();
+  [...(p.avisos || []), ...(p.avisosDistribuicao || [])].forEach(a => av.appendChild(eqEl("li", "", a)));
+  const it = envEl("env-itens"); it.replaceChildren();
+  let grupo = null;
+  p.itens.forEach((x, i) => {
+    if (x.grupo !== grupo) { grupo = x.grupo; it.appendChild(eqEl("h4", "eq-grupo", grupo || "Outros")); }
+    const linha = eqEl("div", "env-item-linha");
+    linha.appendChild(eqEl("span", "", `${x.descricao || ""} · ${x.codigoExib}`));
+    const q = document.createElement("input");
+    q.type = "number"; q.min = "0"; q.step = "1"; q.value = x.qtd; q.id = "env-qtd-" + i; q.className = "env-qtd";
+    linha.appendChild(q);
+    it.appendChild(linha);
+  });
+  const vs = envEl("env-veiculos"); vs.replaceChildren();
+  p.veiculos.forEach(v => {
+    const card = eqEl("div", "eq-item");
+    const comp = v.comp_util_m ? `${fmtNum(v.comp_usado, 2)}/${fmtNum(v.comp_util_m, 2)} m` : `${fmtNum(v.comp_usado, 2)} m`;
+    const peso = v.carga_max_kg ? `${fmtNum(v.peso_kg, 0)}/${fmtNum(v.carga_max_kg, 0)} kg` : `${fmtNum(v.peso_kg, 0)} kg`;
+    card.appendChild(eqEl("div", "eq-item-titulo", `${v.n}) ${v.tipo} · ${comp} · forro ${fmtNum(v.forro_usado, 2)} m · ${peso}`));
+    v.itens.forEach(x => card.appendChild(eqEl("div", "", `${x.qtd} × ${x.descricao || x.codigoExib}${x.forro ? " (forro)" : ""}${x.filha ? " (junto do pai)" : ""}`)));
+    vs.appendChild(card);
+  });
+}
+
+async function salvarEnvio() {
+  if (!ENV.previa) return;
+  const cliente = envEl("env-cliente").value.trim();
+  if (!cliente) { envStatus("Informe o cliente."); return; }
+  const btn = envEl("env-btn-salvar"); btn.disabled = true;
+  envStatus("Salvando o envio…");
+  const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, endereco_envio: envEl("env-endereco").value,
+                                            obra: envEl("env-obra").value, veiculos: ENV.previa.veiculos });
+  btn.disabled = false;
+  if (!j.ok) { envStatus("Não salvo: " + j.error); return; }
+  envStatus(`Envio #${j.id} salvo com ${j.romaneios} romaneio(s).`);
+  abrirEnvioDetalhe(j.id);
+}
+
+// ---------- Detalhe do envio ----------
+async function abrirEnvioDetalhe(id) {
+  ENV.envioId = id;
+  envView("detalhe");
+  const box = envEl("env-romaneios"); box.replaceChildren(eqEl("p", "secao-info", "Carregando…"));
+  const j = await romPost("envio", { id });
+  box.replaceChildren();
+  if (!j.ok) { box.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); return; }
+  const e = j.envio;
+  envEl("env-det-titulo").textContent = `${e.cliente} – ${e.gt}`;
+  envEl("env-det-info").textContent = `Envio #${e.id} · ${e.obra || "sem obra"} · ${e.modelo} · lança ${fmtNum(e.lanca_m)} m` +
+    (e.altura_m ? ` · altura ${fmtNum(e.altura_m, 2)} m` : "") + (e.base ? ` · ${e.base}` : "") +
+    (e.lastro_t ? ` · lastro ${fmtNum(e.lastro_t, 2)} t` : "") + ` · ${e.status}`;
+  j.romaneios.forEach(r => {
+    const card = eqEl("button", "env-card env-st-" + r.status);
+    card.type = "button";
+    card.appendChild(eqEl("div", "eq-item-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"}`));
+    card.appendChild(eqEl("div", "", `peças ${r.lidas}/${r.previstas} · ${fmtNum(r.comp_m, 2)} m · ${fmtNum(r.peso_kg, 0)} kg`));
+    card.appendChild(eqEl("div", "env-sub", `${r.status}${r.placa_cavalo ? " · " + r.placa_cavalo : ""}${r.motorista ? " · " + r.motorista : ""}`));
+    card.addEventListener("click", () => abrirRomaneio(r.id));
+    box.appendChild(card);
+  });
+  const sel = envEl("env-novo-veiculo"); sel.replaceChildren();
+  (ENV.opcoes?.frota || []).forEach(v => envOpcao(sel, v.nome));
+  envEl("env-btn-novo-veiculo").disabled = !envPode("expedicao", "operacional");
+}
+
+async function novoVeiculoEnvio() {
+  const j = await romPost("novo_romaneio", { envio_id: ENV.envioId, veiculo: envEl("env-novo-veiculo").value });
+  if (!j.ok) { envStatus("Erro: " + j.error); return; }
+  abrirEnvioDetalhe(ENV.envioId);
+}
+
+// ---------- Romaneio ----------
+async function abrirRomaneio(id) {
+  ENV.romaneioId = id;
+  envView("romaneio");
+  envEl("env-leitura").hidden = true;
+  envEl("env-just").value = "";
+  await recarregarRomaneio();
+}
+
+async function recarregarRomaneio() {
+  const j = await romPost("romaneio", { id: ENV.romaneioId });
+  if (!j.ok) { envStatus("Erro: " + j.error); return; }
+  ENV.rom = j;
+  const r = j.romaneio;
+  const fechado = ROM_FECHADO.includes(r.status);
+  const podeConferir = envPode("operacional", "expedicao");
+  envEl("env-rom-titulo").textContent = `Romaneio ${r.numero} · ${r.cliente} – ${r.gt}`;
+  envEl("env-rom-info").textContent = `${r.modelo} · ${r.veiculo || "veículo a definir"} · ${r.status}` +
+    (r.confirmado_por ? ` por ${r.confirmado_por}` : "") + (r.justificativa ? ` · justificativa: ${r.justificativa}` : "");
+
+  // Itens: previsto × lido
+  const box = envEl("env-rom-itens"); box.replaceChildren();
+  const prev = j.itens.reduce((s, i) => s + i.qtd, 0), lid = j.itens.reduce((s, i) => s + Math.min(i.lidos, i.qtd), 0);
+  box.appendChild(eqEl("p", "lista-inv-titulo", `${lid}/${prev} peças conferidas`));
+  j.itens.filter(i => i.qtd > 0 || i.lidos > 0).forEach(i => {
+    const st = i.lidos >= i.qtd ? "ok" : (i.lidos ? "parcial" : "falta");
+    const card = eqEl("div", "eq-item env-it-" + st);
+    card.appendChild(eqEl("div", "eq-item-titulo", `${i.lidos}/${i.qtd} · ${i.descricao || i.codigo_exibicao}` +
+      (i.forro ? " (forro)" : "") + (i.filha ? " (junto do pai)" : "") + (i.origem === "manual" ? " (fora do plano)" : "")));
+    card.appendChild(eqEl("div", "eq-item-codigo", `${i.codigo_exibicao || i.codigo}` +
+      (i.comp_m != null ? ` · ${fmtNum(i.comp_m, 2)} m` : "") + (i.peso_kg != null ? ` · ${fmtNum(i.peso_kg, 0)} kg` : "")));
+    const livres = i.qtd - i.lidos;
+    const destinos = j.outros.filter(o => !ROM_FECHADO.includes(o.status));
+    if (!fechado && livres > 0 && destinos.length && podeConferir) {
+      const mv = eqEl("div", "env-mover");
+      const q = document.createElement("input"); q.type = "number"; q.min = "1"; q.max = String(livres); q.value = "1"; q.className = "env-qtd";
+      const dest = document.createElement("select");
+      destinos.forEach(o => envOpcao(dest, o.id, `→ romaneio ${o.numero}${o.veiculo ? " (" + o.veiculo + ")" : ""}`));
+      const b = eqEl("button", "", "Mover"); b.type = "button";
+      b.addEventListener("click", async () => {
+        const k = await romPost("mover_item", { de: r.id, para: Number(dest.value), codigo: i.codigo, qtd: Number(q.value) });
+        envStatus(k.ok ? "Peça movida." : "Não movida: " + k.error);
+        recarregarRomaneio();
+      });
+      mv.append(q, dest, b);
+      card.appendChild(mv);
+    }
+    box.appendChild(card);
+  });
+
+  // Fotos
+  const fotos = envEl("env-fotos"); fotos.replaceChildren();
+  j.fotos.forEach(f => {
+    const a = document.createElement("a"); a.href = f.url; a.target = "_blank"; a.rel = "noopener";
+    const img = document.createElement("img"); img.src = f.url; img.alt = "foto do carregamento";
+    a.appendChild(img); fotos.appendChild(a);
+  });
+  envEl("env-foto").disabled = fechado || !podeConferir;
+
+  // Dados da carreta
+  const vs = envEl("env-veiculo"); vs.replaceChildren(); envOpcao(vs, "", "A definir");
+  (ENV.opcoes?.frota || []).forEach(v => envOpcao(vs, v.nome));
+  vs.value = r.veiculo || "";
+  const dt = envEl("env-transps"); dt.replaceChildren(); (ENV.opcoes?.transportadoras || []).forEach(t => envOpcao(dt, t.nome));
+  const dm = envEl("env-motoristas"); dm.replaceChildren(); (ENV.opcoes?.motoristas || []).forEach(m => envOpcao(dm, m.nome));
+  Object.entries(ENV_CAMPOS_ROM).forEach(([id, k]) => { envEl(id).value = r[k] || ""; envEl(id).disabled = fechado; });
+  vs.disabled = fechado;
+  ["env-btn-dados", "env-btn-confirmar", "env-btn-ler", "env-btn-registrar"].forEach(id => envEl(id).disabled = fechado || !podeConferir);
+
+  // Leituras e histórico
+  const lb = envEl("env-leituras"); lb.replaceChildren();
+  if (!j.leituras.length) lb.appendChild(eqEl("p", "secao-info", "Nenhuma peça conferida ainda."));
+  j.leituras.forEach(l => {
+    const linha = eqEl("div", "env-item-linha");
+    linha.appendChild(eqEl("span", "", `${l.quando} · ${l.codigo9} / ID ${l.id_individual}${l.manual ? " (digitado)" : ""}` +
+      `${l.fora_do_plano ? " (fora do plano)" : ""} · ${l.usuario}`));
+    if (!fechado && podeConferir) {
+      const b = eqEl("button", "env-mini", "desfazer"); b.type = "button";
+      b.addEventListener("click", async () => {
+        const k = await romPost("desfazer_leitura", { leitura_id: l.id });
+        envStatus(k.ok ? "Leitura desfeita." : "Erro: " + k.error);
+        recarregarRomaneio();
+      });
+      linha.appendChild(b);
+    }
+    lb.appendChild(linha);
+  });
+  const hb = envEl("env-historico"); hb.replaceChildren();
+  j.historico.forEach(h => hb.appendChild(eqEl("div", "env-sub", `${h.quando} · ${h.usuario} · ${h.acao}`)));
+}
+
+const ENV_CAMPOS_ROM = { "env-transp": "transportadora", "env-motorista": "motorista", "env-cpf": "cpf_motorista",
+  "env-placa-cavalo": "placa_cavalo", "env-placa-c1": "placa_carreta1", "env-placa-c2": "placa_carreta2",
+  "env-nf": "nota_fiscal", "env-resp": "responsavel", "env-obs": "obs" };
+
+// Leitura (QR ou digitada). opcoes: { manual, mover, confirmo }
+async function lerPecaEnvio(c9, id, opcoes) {
+  const o = opcoes || {};
+  const msg = envEl("env-leitura-msg"), acoes = envEl("env-leitura-acoes");
+  envEl("env-leitura").hidden = false;
+  acoes.replaceChildren();
+  msg.className = "";
+  msg.textContent = `Conferindo ${c9} / ID ${id}…`;
+  const j = await romPost("ler_peca", { romaneio_id: ENV.romaneioId, codigo9: c9, id_individual: id,
+                                        manual: !!o.manual, mover: !!o.mover, confirmo: o.confirmo || "" });
+  const botao = (texto, fn) => { const b = eqEl("button", "", texto); b.type = "button"; b.addEventListener("click", fn); acoes.appendChild(b); };
+  if (j.ok) {
+    msg.className = "env-msg-ok";
+    msg.textContent = `OK: ${j.descricao || j.codigo}` + (j.fora ? " (fora do plano)" : "") + (j.movidoDe ? " (movida de outro romaneio)" : "");
+    await recarregarRomaneio();
+    if (ENV.leitorAtivo) setTimeout(() => { if (ENV.leitorAtivo && ENV.view === "romaneio") iniciarLeitor("env-qr"); }, 900);
+    return;
+  }
+  msg.className = "env-msg-erro";
+  msg.textContent = j.error || "Não conferida.";
+  if (j.pedeMover) botao("Mover para este romaneio", () => lerPecaEnvio(c9, id, { ...o, mover: true }));
+  if (j.pedeConfirmo) {
+    const inp = document.createElement("input"); inp.placeholder = "Digite CONFIRMO"; inp.className = "env-confirmo";
+    acoes.appendChild(inp);
+    botao("Incluir mesmo assim", () => lerPecaEnvio(c9, id, { ...o, confirmo: inp.value }));
+  }
+  if (j.naoEncontrada) {
+    botao("Registrar ajuste", () => { ENV.leitorAtivo = false; abrirAjuste(c9, id, []); AJ.voltar = "envio"; });
+  }
+  botao("Continuar lendo", () => { envEl("env-leitura").hidden = true; if (ENV.leitorAtivo) iniciarLeitor("env-qr"); });
+}
+
+async function salvarDadosRomaneio() {
+  const d = { id: ENV.romaneioId };
+  Object.entries(ENV_CAMPOS_ROM).forEach(([id, k]) => { d[k] = envEl(id).value; });
+  if (envEl("env-veiculo").value) d.veiculo = envEl("env-veiculo").value;
+  const j = await romPost("editar_romaneio", d);
+  envStatus(j.ok ? "Dados do romaneio salvos." : "Não salvo: " + j.error);
+  if (j.ok) recarregarRomaneio();
+}
+
+async function enviarFotoRomaneio(file) {
+  if (!file) return;
+  envStatus("Enviando foto…");
+  try {
+    const blob = await reduzirFoto(file);
+    const j = await romPost("foto_upload", { romaneio_id: ENV.romaneioId });
+    if (!j.ok) throw new Error(j.error);
+    const { resp } = await netFetch(j.url, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob }, 60000);
+    if (!resp.ok) throw new Error(`upload HTTP ${resp.status}`);
+    const k = await romPost("foto_registrar", { romaneio_id: ENV.romaneioId, caminho: j.caminho });
+    if (!k.ok) throw new Error(k.error);
+    envStatus("Foto enviada.");
+  } catch (e) {
+    envStatus("Foto não enviada: " + (e.message || e));
+  }
+  envEl("env-foto").value = "";
+  recarregarRomaneio();
+}
+
+async function confirmarRomaneio() {
+  if (!confirm("Confirmar este romaneio? Depois só um admin reabre.")) return;
+  const j = await romPost("confirmar", { id: ENV.romaneioId, justificativa: envEl("env-just").value });
+  if (!j.ok) {
+    envStatus("Não confirmado: " + j.error + (j.faltas ? " — " + j.faltas.join("; ") : ""));
+    return;
+  }
+  envStatus("Romaneio confirmado." + (j.envioConcluido ? " Todos os romaneios do envio estão confirmados." : ""));
+  recarregarRomaneio();
+}
+
+/* ---------- Cadastros ---------- */
+const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false };
+const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito)", descricao: "Descrição", peso_kg: "Peso (kg)",
+  comp_m: "Comprimento (m)", larg_m: "Largura (m)", alt_m: "Altura (m)", preco_padrao: "Preço padrão", valor_unitario: "Valor unitário (NF)",
+  sapiens_produto: "Sapiens produto", sapiens_derivacao: "Sapiens derivação", veiculo_exigido: "Veículo exigido",
+  vai_embaixo: "Vai embaixo (forro)", obs: "Observação", pendencias: "Pendências de cadastro", nome: "Nome",
+  comp_util_m: "Comprimento útil (m)", carga_max_kg: "Carga máxima (kg)", padrao: "Veículo padrão", ordem: "Ordem", ativo: "Ativo",
+  endereco_envio: "Endereço de envio", cnpj: "CNPJ", cpf: "CPF", transportadora_id: "Transportadora (id)", placa: "Placa",
+  tipo: "Tipo (cavalo/carreta)", usuario: "Usuário", papel: "Papel", id: "Id" };
+const CAD_BOOL = new Set(["vai_embaixo", "padrao", "ativo"]);
+const PAPEIS = ["admin", "cadastro", "expedicao", "operacional", "consulta"];
+
+function cadStatus(m) { envEl("cad-status").textContent = m || ""; }
+
+async function abrirCadastros() {
+  cadStatus("Conectando ao Supabase…");
+  const me = await romPost("me");
+  if (!me.ok) { cadStatus("Sem acesso ao Supabase: " + (me.error || "acesso negado")); return; }
+  ENV.papeis = me.papeis || [];
+  if (!ENV.opcoes && ENV.papeis.length) { const op = await romPost("opcoes"); if (op.ok) ENV.opcoes = op; }
+  cadStatus(`Usuário ${me.usuario} · papéis: ${ENV.papeis.join(", ") || "nenhum"}`);
+  carregarCadastro();
+}
+
+async function carregarCadastro() {
+  const tabela = envEl("cad-tabela").value;
+  envEl("cad-form").hidden = true;
+  const lista = envEl("cad-lista"); lista.replaceChildren(eqEl("p", "secao-info", "Carregando…"));
+  const j = await romPost("cad_listar", { tabela, busca: envEl("cad-busca").value });
+  lista.replaceChildren();
+  if (!j.ok) { lista.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); envEl("cad-total").textContent = ""; return; }
+  Object.assign(CAD, { colunas: j.colunas, linhas: j.linhas, podeEditar: j.podeEditar, tabela });
+  envEl("cad-btn-novo").hidden = !j.podeEditar;
+  envEl("cad-total").textContent = `${j.total} registro(s)` + (j.total > j.linhas.length ? ` (mostrando ${j.linhas.length}; use a busca)` : "");
+  j.linhas.forEach(l => {
+    const card = eqEl("button", "env-card" + (l.pendencias ? " cad-pendente" : ""));
+    card.type = "button";
+    const chave = j.colunas[0];
+    const titulo = tabela === "pecas" ? `${l.codigo_exibicao} · ${l.descricao || ""}`
+                 : tabela === "usuario_papeis" ? `${l.usuario} · ${l.papel}`
+                 : `${l[chave]}${l.nome && chave !== "nome" ? " · " + l.nome : ""}`;
+    card.appendChild(eqEl("div", "eq-item-titulo", titulo));
+    const resumo = j.colunas.slice(1).filter(k => l[k] != null && l[k] !== "" && !["descricao", "nome", "pendencias", "codigo_exibicao"].includes(k))
+      .slice(0, 5).map(k => `${CAD_ROTULOS[k] || k}: ${l[k]}`).join(" · ");
+    if (resumo) card.appendChild(eqEl("div", "env-sub", resumo));
+    if (l.pendencias) card.appendChild(eqEl("div", "eq-aviso", l.pendencias));
+    card.addEventListener("click", () => editarCadastro(l));
+    lista.appendChild(card);
+  });
+}
+
+function editarCadastro(linha) {
+  const f = envEl("cad-form"); f.replaceChildren(); f.hidden = false;
+  const novo = !linha, tabela = CAD.tabela;
+  f.appendChild(eqEl("h3", "", novo ? "Novo registro" : "Editar"));
+  if (tabela === "usuario_papeis") {
+    const u = document.createElement("input"); u.id = "cad-f-usuario"; u.value = linha?.usuario || ""; u.placeholder = "usuário (e-mail antes do @)";
+    const p = document.createElement("select"); p.id = "cad-f-papel"; PAPEIS.forEach(x => envOpcao(p, x)); if (linha) p.value = linha.papel;
+    f.append(eqEl("label", "campo-label", "Usuário"), u, eqEl("label", "campo-label", "Papel"), p);
+    const add = eqEl("button", "", "Adicionar papel"); add.type = "button";
+    const del = eqEl("button", "", "Remover papel"); del.type = "button";
+    add.addEventListener("click", () => salvarCadastro({ usuario: u.value, papel: p.value }, false));
+    del.addEventListener("click", () => salvarCadastro({ usuario: u.value, papel: p.value }, true));
+    const ac = eqEl("div", "env-acoes"); ac.append(add, del); f.appendChild(ac);
+    f.scrollIntoView({ behavior: "smooth" });
+    return;
+  }
+  const campos = {};
+  const chave = CAD.colunas[0];
+  CAD.colunas.forEach(k => {
+    if (k === "id" && novo) return;
+    let inp;
+    if (CAD_BOOL.has(k)) { inp = document.createElement("select"); envOpcao(inp, "false", "Não"); envOpcao(inp, "true", "Sim"); inp.value = String(!!linha?.[k]); }
+    else if (k === "veiculo_exigido") { inp = document.createElement("select"); envOpcao(inp, "", "Nenhum"); (ENV.opcoes?.frota || []).forEach(v => envOpcao(inp, v.nome)); inp.value = linha?.[k] || ""; }
+    else if (k === "pendencias" || k === "obs") { inp = document.createElement("textarea"); inp.rows = 3; inp.value = linha?.[k] ?? ""; }
+    else { inp = document.createElement("input"); inp.value = linha?.[k] ?? ""; }
+    inp.id = "cad-f-" + k;
+    inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
+    campos[k] = inp;
+    f.append(eqEl("label", "campo-label", CAD_ROTULOS[k] || k), inp);
+  });
+  if (CAD.podeEditar) {
+    const b = eqEl("button", "", "Salvar"); b.type = "button"; b.id = "cad-btn-salvar";
+    b.addEventListener("click", () => {
+      const d = {};
+      Object.entries(campos).forEach(([k, el]) => { if (k !== "id") d[k] = el.value; });
+      if (!novo) d[chave] = linha[chave];
+      salvarCadastro(d, false);
+    });
+    const ac = eqEl("div", "env-acoes"); ac.appendChild(b); f.appendChild(ac);
+  }
+  f.scrollIntoView({ behavior: "smooth" });
+}
+
+async function salvarCadastro(dados, excluir) {
+  cadStatus("Salvando…");
+  const j = await romPost("cad_salvar", { tabela: CAD.tabela, dados, excluir });
+  cadStatus(j.ok ? "Salvo." : "Não salvo: " + j.error);
+  if (j.ok) carregarCadastro();
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  envEl("env-btn-novo")?.addEventListener("click", novoEnvio);
+  envEl("env-todos")?.addEventListener("change", carregarEnvios);
+  document.querySelectorAll(".env-voltar").forEach(b => b.addEventListener("click", () => {
+    if (b.dataset.voltar === "detalhe" && ENV.envioId) abrirEnvioDetalhe(ENV.envioId);
+    else { envView("lista"); carregarEnvios(); }
+  }));
+  envEl("env-gt")?.addEventListener("change", () => {
+    const g = (ENV.opcoes?.gts || []).find(x => x.gt === envEl("env-gt").value);
+    const m = g && ENV.opcoes.modelos.find(x => eqNorm(x.nome) === eqNorm(g.modelo));
+    if (m) { envEl("env-modelo").value = m.nome; envModeloMudou(); }
+  });
+  envEl("env-modelo")?.addEventListener("change", envModeloMudou);
+  envEl("env-base")?.addEventListener("change", envBaseMudou);
+  envEl("env-telesc")?.addEventListener("change", envBaseMudou);
+  envEl("env-cliente")?.addEventListener("change", () => {
+    const c = (ENV.opcoes?.clientes || []).find(x => eqNorm(x.nome) === eqNorm(envEl("env-cliente").value));
+    if (c && c.endereco_envio && !envEl("env-endereco").value) envEl("env-endereco").value = c.endereco_envio;
+  });
+  envEl("env-btn-previa")?.addEventListener("click", () => gerarPrevia(false));
+  envEl("env-btn-redistribuir")?.addEventListener("click", () => gerarPrevia(true));
+  envEl("env-btn-salvar")?.addEventListener("click", salvarEnvio);
+  envEl("env-btn-novo-veiculo")?.addEventListener("click", novoVeiculoEnvio);
+  envEl("env-btn-ler")?.addEventListener("click", () => { ENV.leitorAtivo = true; envEl("env-leitura").hidden = true; iniciarLeitor("env-qr"); });
+  envEl("env-btn-parar")?.addEventListener("click", () => { ENV.leitorAtivo = false; pararLeitor(); });
+  envEl("env-btn-registrar")?.addEventListener("click", () => {
+    const c9 = envEl("env-c9").value.trim(), id = envEl("env-id").value.trim();
+    if (!c9 || !id) { envStatus("Digite código 9 e ID."); return; }
+    lerPecaEnvio(c9, id, { manual: true });
+    envEl("env-c9").value = ""; envEl("env-id").value = "";
+  });
+  envEl("env-btn-dados")?.addEventListener("click", salvarDadosRomaneio);
+  envEl("env-btn-confirmar")?.addEventListener("click", confirmarRomaneio);
+  envEl("env-foto")?.addEventListener("change", e => enviarFotoRomaneio(e.target.files && e.target.files[0]));
+  envEl("env-motorista")?.addEventListener("change", () => {
+    const m = (ENV.opcoes?.motoristas || []).find(x => eqNorm(x.nome) === eqNorm(envEl("env-motorista").value));
+    if (m && m.cpf && !envEl("env-cpf").value) envEl("env-cpf").value = m.cpf;
+  });
+  envEl("cad-tabela")?.addEventListener("change", carregarCadastro);
+  envEl("cad-btn-buscar")?.addEventListener("click", carregarCadastro);
+  envEl("cad-busca")?.addEventListener("keydown", e => { if (e.key === "Enter") carregarCadastro(); });
+  envEl("cad-btn-novo")?.addEventListener("click", () => editarCadastro(null));
+});

@@ -16,6 +16,7 @@ npm run test:script      # só o script do Consolidado (não precisa do Playwrig
 npm run test:converter   # conversor das planilhas para o Supabase (não precisa do Playwright)
 npm run test:envio       # conversor do envio de grua (não precisa do Playwright)
 npm run test:configurador # lista de peças e distribuição nos veículos (MOSTRAR=1 imprime os veículos)
+npm run test:envio-tela  # telas Envio de grua e Cadastros (Chromium; função romaneio simulada)
 npm run test:navegador   # app no navegador (Chromium headless)
 npm run test:duplo       # alimentação dupla Google + Supabase (Chromium headless)
 npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/Safari)
@@ -41,6 +42,10 @@ npm run test:foto        # redução de foto antes do envio (Chromium e WebKit/S
 - `configurador.test.js`: `supabase/functions/_shared/configurador.mjs` com dados inventados: lista pela lança da
   RELAÇÃO + torre/base/lastro das regras (chumbador × carro inferior), nada duplicado; distribuição na ordem de montagem,
   prancha só para cabine/mecanismo, peça de 12,42 m na carreta 15 m, filha com o pai, forro, limites de comprimento e peso.
+- `envio-tela.test.js`: telas 6) Envio de grua e 7) Cadastros com Auth e função `romaneio` simulados em memória
+  (a prévia usa o configurador de verdade): novo envio → prévia → redistribuir → salvar → leitura ok / mover / fora do
+  envio com CONFIRMO / não encontrada → ajuste → dados da carreta → confirmar; cadastro de peça; sem papel; consulta.
+  O SQL da função não é testado aqui.
 - `foto.test.js`: `reduzirFoto`/`uploadFotoParaLinha` no Chromium e no WebKit (Safari): foto 4032x3024 chega com
   1080 no lado menor, foto com rotação EXIF continua em pé, foto pequena vai como está.
 

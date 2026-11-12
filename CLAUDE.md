@@ -78,6 +78,11 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   lança = fixo da grua; regras só para torre/base/lastro, carro inferior OU chumbador; lastro escolhido pelo usuário;
   ajustes do GT valem na conferência por QR, não na lista) e `distribuirVeiculos` (ordem de montagem, prancha exclusiva,
   filha com o pai sem ocupar comprimento, forro por baixo, limites de comprimento/peso; nunca trava, avisa).
+  Operação: migration `20261112130000_envio_operacao` (envios, romaneios, romaneio_itens, romaneio_leituras — peça única
+  por envio —, romaneio_fotos no bucket privado `romaneios`, romaneio_log). Edge Function `supabase/functions/romaneio`
+  (importa o `_shared/configurador.mjs`; papéis em `usuario_papeis`: admin/cadastro/expedicao/operacional/consulta;
+  usuário sem papel não usa). Mudou a função: suba `VERSION` e confira `…/functions/v1/romaneio?modo=diag`.
+  Ajuste feito na conferência vai para a AJUSTE do Google; só chega ao Supabase com o espelho ligado.
 - Falhas: `estoque.espelho_log`. Próximas fases (consultas lendo do Supabase; corte) em `migracao/README.md` e no plano.
 
 ## Frontend
@@ -103,7 +108,13 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
   confronta com inventários (`carregarInventariosEq`, `inventariadoEq`); "+ Inserir compatível" = `abrirCompatEq`.
 - **ajuste**: `abrirAjuste` → `onGtAjuste` → `renderPosicoesAjuste` → `escolherPosicaoAjuste` (IDs de fábrica /
   inclusão) → `renderCompatAjuste` (outro desenho?) → `atualizarBotaoAjuste` → `gravarAjuste`. Estado em `AJ`.
-- **debug**: `logDebug`, `copiarDebug`. Login: `fazerLogin`/`mostrarLogin`, credenciais em `localStorage.ce_auth`.
+- **envio** (6) Envio de grua, só Supabase, função `romaneio` via `romPost(modo, dados)`): painéis `env-lista` →
+  `env-novo` (`novoEnvio`, `envModeloMudou`/`envBaseMudou`, `gerarPrevia` → `renderPrevia`, `salvarEnvio`) → `env-detalhe`
+  (`abrirEnvioDetalhe`) → `env-romaneio` (`abrirRomaneio`/`recarregarRomaneio`, `lerPecaEnvio` — o QR lido nesta tela vai
+  para cá em `processarQRCode` —, mover, fotos `enviarFotoRomaneio`, `salvarDadosRomaneio`, `confirmarRomaneio`); estado `ENV`,
+  papéis `envPode`. Peça não encontrada → "Registrar ajuste" (`abrirAjuste`, `AJ.voltar = "envio"`).
+- **cadastros** (7): `abrirCadastros`, `carregarCadastro`, `editarCadastro`, `salvarCadastro` (`cad_listar`/`cad_salvar`); estado `CAD`.
+- **debug** (8): `logDebug`, `copiarDebug`. Login: `fazerLogin`/`mostrarLogin`, credenciais em `localStorage.ce_auth`.
 Estado da tela Equipamento em `EQ` (caches `lancasPorGrua`, `mcPorGt`…); helpers `eqGetJson`, `eqChaveC`, `eqNorm`, `eqEl`.
 Caixas de inventário (Equipamento, Consultar Inventário, Acessórios; cada tela com sua seleção): `buscarInvResumo`,
 `renderOpcoesInv`, `podarSelecaoInv`, `ordenarNumInv`.
@@ -119,4 +130,5 @@ Modos do `doGet`:
 Ver `testes/README.md`. `node testes/consolidado.test.js` (script do Consolidado simulado em Node) e
 `node testes/navegador.test.js` (Playwright, Apps Scripts interceptados) e
 `node testes/foto.test.js` (redução de foto no Chromium e no WebKit/Safari), `node testes/duplo.test.js` (alimentação
-dupla) e `node testes/converter.test.js` (conversor das planilhas); `npm test` roda todos. Ao mudar um fluxo, acrescente o caso.
+dupla) e `node testes/converter.test.js` (conversor das planilhas), `envio.test.js`, `configurador.test.js` e `envio-tela.test.js`
+(telas do envio com a função `romaneio` simulada); `npm test` roda todos. Ao mudar um fluxo, acrescente o caso.

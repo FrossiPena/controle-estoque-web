@@ -1,4 +1,4 @@
-/* style_v5.21.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v5.22.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -455,3 +455,39 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .vc-codigo{ font-family: monospace; font-size: 1.15em; font-weight: 700; word-break: break-all; margin: 8px 0 2px; }
 .vc-aviso{ color: #b26a00; }
 .vc-erro{ color: #c62828; }
+
+/* Envio de grua e Cadastros */
+.env-painel h3{ margin: 16px 0 6px; }
+.env-acoes{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.env-acoes input[type="search"], .env-acoes select{ flex: 1; min-width: 140px; margin: 0; }
+.env-check{ display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.env-check input{ width: auto; margin: 0; }
+.env-voltar{ background: transparent; color: #1e5eff; border: 0; padding: 4px 0; font-weight: 700; cursor: pointer; }
+.env-card{ display: block; width: 100%; text-align: left; margin: 6px 0; border: 1px solid #d7dbe2; border-radius: 8px;
+  padding: 8px 10px; background: #f6f7f9; color: #222; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.env-card:hover{ border-color: #1e5eff; }
+.env-sub{ color: #667; font-size: 12px; }
+.env-st-confirmado, .env-st-nf_solicitada{ border-left: 5px solid #1f9d55; }
+.env-st-carregando{ border-left: 5px solid #e0a100; }
+.env-item-linha{ display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0;
+  border-bottom: 1px solid #eee; font-size: 13px; }
+.env-qtd{ width: 70px !important; flex: 0 0 auto; margin: 0 !important; }
+.env-avisos{ margin: 4px 0; padding-left: 18px; color: #8a5a00; font-size: 12px; }
+.env-manual{ display: flex; gap: 6px; margin: 8px 0; }
+.env-manual input{ flex: 1; margin: 0; }
+.env-leitura{ border-radius: 8px; padding: 8px 10px; background: #f6f7f9; margin: 8px 0; }
+.env-msg-ok{ color: #1f7a3f; font-weight: 700; }
+.env-msg-erro{ color: #b3261e; font-weight: 700; }
+.env-confirmo{ flex: 1; min-width: 120px; margin: 0 !important; }
+.env-it-ok{ border-left: 5px solid #1f9d55; }
+.env-it-parcial{ border-left: 5px solid #e0a100; }
+.env-it-falta{ border-left: 5px solid #b3261e; }
+.env-mover{ display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+.env-mover select{ flex: 1; margin: 0; }
+.env-mini{ padding: 2px 8px; font-size: 12px; }
+.env-fotos{ display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.env-fotos img{ width: 96px; height: 96px; object-fit: cover; border-radius: 6px; }
+.env-placa{ text-transform: uppercase; }
+.env-hist{ margin-top: 10px; font-size: 13px; }
+.cad-form{ border: 1px solid #d7dbe2; border-radius: 8px; padding: 8px 10px; margin: 8px 0; background: #fff; }
+.cad-pendente{ border-left: 5px solid #e0a100; }

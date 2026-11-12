@@ -1,13 +1,13 @@
-<!-- index.html - v5.21.0 (Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v5.22.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.21.0" />
+  <meta name="app-version" content="v5.22.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.21.0" />
+  <link rel="stylesheet" href="style.css?v=5.22.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -46,7 +46,9 @@
       <button type="button" data-screen="inventario">3) Consultar Inventário</button>
       <button type="button" data-screen="equipamento">4) Equipamento</button>
       <button type="button" data-screen="acessorios">5) Acessórios</button>
-      <button type="button" data-screen="debug">6) Debug</button>
+      <button type="button" data-screen="envio">6) Envio de grua</button>
+      <button type="button" data-screen="cadastros">7) Cadastros</button>
+      <button type="button" data-screen="debug">8) Debug</button>
     </nav>
 
     <div class="sidebar-footer">
@@ -475,7 +477,162 @@
       <p id="aj-status" class="secao-info"></p>
     </section>
 
-    <!-- 6) Debug -->
+    <!-- 6) Envio de grua (Supabase) -->
+    <section class="frame" id="screen-envio" hidden>
+      <p id="env-status" class="secao-info"></p>
+
+      <!-- Lista de envios, agrupada por cliente – GT -->
+      <div id="env-lista" class="env-painel">
+        <h2>Envio de grua</h2>
+        <div class="env-acoes">
+          <button type="button" id="env-btn-novo">+ Novo envio</button>
+          <label class="env-check"><input type="checkbox" id="env-todos" /> mostrar concluídos</label>
+        </div>
+        <div id="env-envios"></div>
+      </div>
+
+      <!-- Novo envio: configuração → prévia → salvar -->
+      <div id="env-novo" class="env-painel" hidden>
+        <h2>Novo envio</h2>
+        <button type="button" class="env-voltar" data-voltar="lista">← Envios</button>
+        <label class="campo-label" for="env-cliente">Cliente</label>
+        <input type="text" id="env-cliente" list="env-clientes" autocomplete="off" />
+        <datalist id="env-clientes"></datalist>
+        <label class="campo-label" for="env-endereco">Endereço de envio</label>
+        <input type="text" id="env-endereco" />
+        <label class="campo-label" for="env-obra">Obra</label>
+        <input type="text" id="env-obra" />
+        <label class="campo-label" for="env-gt">GT</label>
+        <select id="env-gt"></select>
+        <label class="campo-label" for="env-modelo">Modelo</label>
+        <select id="env-modelo"></select>
+        <label class="campo-label" for="env-lanca">Lança</label>
+        <select id="env-lanca"></select>
+        <label class="campo-label" for="env-base">Base (carro inferior ou chumbador)</label>
+        <select id="env-base"></select>
+        <label class="campo-label" for="env-telesc">Telescopagem</label>
+        <select id="env-telesc"><option value="nao">Não</option><option value="sim">Sim</option></select>
+        <label class="campo-label" for="env-altura">Altura (m)</label>
+        <select id="env-altura"></select>
+        <label class="campo-label" for="env-lastro">Lastro (t)</label>
+        <select id="env-lastro"></select>
+        <div class="env-acoes"><button type="button" id="env-btn-previa">Gerar romaneios</button></div>
+
+        <div id="env-previa" hidden>
+          <h3>Peças do envio</h3>
+          <p class="secao-info">Ajuste as quantidades se precisar e toque em Redistribuir.</p>
+          <ul id="env-avisos" class="env-avisos"></ul>
+          <div id="env-itens"></div>
+          <div class="env-acoes"><button type="button" id="env-btn-redistribuir">Redistribuir</button></div>
+          <h3>Veículos</h3>
+          <div id="env-veiculos"></div>
+          <div class="env-acoes"><button type="button" id="env-btn-salvar">Salvar envio</button></div>
+        </div>
+      </div>
+
+      <!-- Detalhe do envio: um cartão por veículo/romaneio -->
+      <div id="env-detalhe" class="env-painel" hidden>
+        <button type="button" class="env-voltar" data-voltar="lista">← Envios</button>
+        <h2 id="env-det-titulo"></h2>
+        <p id="env-det-info" class="secao-info"></p>
+        <div id="env-romaneios"></div>
+        <div class="env-acoes">
+          <select id="env-novo-veiculo"></select>
+          <button type="button" id="env-btn-novo-veiculo">+ Veículo</button>
+        </div>
+      </div>
+
+      <!-- Romaneio: dados da carreta, conferência por QR, itens, fotos, confirmar -->
+      <div id="env-romaneio" class="env-painel" hidden>
+        <button type="button" class="env-voltar" data-voltar="detalhe">← Veículos do envio</button>
+        <h2 id="env-rom-titulo"></h2>
+        <p id="env-rom-info" class="secao-info"></p>
+
+        <h3>Conferência</h3>
+        <div class="scanner-buttons">
+          <button type="button" id="env-btn-ler">Ler QR</button>
+          <button type="button" id="env-btn-parar">Parar</button>
+        </div>
+        <div id="env-qr" class="qr-reader"></div>
+        <div class="env-manual">
+          <input type="text" id="env-c9" inputmode="numeric" placeholder="Código 9" />
+          <input type="text" id="env-id" inputmode="numeric" placeholder="ID" />
+          <button type="button" id="env-btn-registrar">Registrar</button>
+        </div>
+        <div id="env-leitura" class="env-leitura" hidden>
+          <p id="env-leitura-msg"></p>
+          <div id="env-leitura-acoes" class="env-acoes"></div>
+        </div>
+
+        <h3>Peças</h3>
+        <div id="env-rom-itens"></div>
+
+        <h3>Fotos</h3>
+        <input type="file" id="env-foto" accept="image/*" capture="environment" />
+        <div id="env-fotos" class="env-fotos"></div>
+
+        <h3>Dados da carreta</h3>
+        <label class="campo-label" for="env-veiculo">Veículo</label>
+        <select id="env-veiculo"></select>
+        <label class="campo-label" for="env-transp">Transportadora</label>
+        <input type="text" id="env-transp" list="env-transps" autocomplete="off" />
+        <datalist id="env-transps"></datalist>
+        <label class="campo-label" for="env-motorista">Motorista</label>
+        <input type="text" id="env-motorista" list="env-motoristas" autocomplete="off" />
+        <datalist id="env-motoristas"></datalist>
+        <label class="campo-label" for="env-cpf">CPF do motorista</label>
+        <input type="text" id="env-cpf" inputmode="numeric" />
+        <label class="campo-label" for="env-placa-cavalo">Placa do cavalo</label>
+        <input type="text" id="env-placa-cavalo" class="env-placa" />
+        <label class="campo-label" for="env-placa-c1">Placa da carreta 1</label>
+        <input type="text" id="env-placa-c1" class="env-placa" />
+        <label class="campo-label" for="env-placa-c2">Placa da carreta 2</label>
+        <input type="text" id="env-placa-c2" class="env-placa" />
+        <label class="campo-label" for="env-nf">Nota fiscal</label>
+        <input type="text" id="env-nf" />
+        <label class="campo-label" for="env-resp">Responsável pelo carregamento</label>
+        <input type="text" id="env-resp" />
+        <label class="campo-label" for="env-obs">Observações</label>
+        <textarea id="env-obs" rows="2"></textarea>
+        <div class="env-acoes"><button type="button" id="env-btn-dados">Salvar dados</button></div>
+
+        <h3>Confirmar romaneio</h3>
+        <p class="secao-info">Exige peças conferidas (ou justificativa), placa do cavalo, motorista, transportadora e ao menos uma foto.</p>
+        <label class="campo-label" for="env-just">Justificativa (se faltar ou sobrar peça)</label>
+        <textarea id="env-just" rows="2"></textarea>
+        <div class="env-acoes"><button type="button" id="env-btn-confirmar">Confirmar romaneio</button></div>
+
+        <h3>Leituras</h3>
+        <div id="env-leituras"></div>
+        <details class="env-hist"><summary>Histórico</summary><div id="env-historico"></div></details>
+      </div>
+    </section>
+
+    <!-- 7) Cadastros (Supabase) -->
+    <section class="frame" id="screen-cadastros" hidden>
+      <h2>Cadastros</h2>
+      <p id="cad-status" class="secao-info"></p>
+      <label class="campo-label" for="cad-tabela">Cadastro</label>
+      <select id="cad-tabela">
+        <option value="pecas">Peças (por Código C)</option>
+        <option value="veiculos">Veículos</option>
+        <option value="clientes">Clientes</option>
+        <option value="transportadoras">Transportadoras</option>
+        <option value="motoristas">Motoristas</option>
+        <option value="placas">Placas</option>
+        <option value="usuario_papeis">Usuários e papéis</option>
+      </select>
+      <div class="env-acoes">
+        <input type="search" id="cad-busca" placeholder="Buscar" />
+        <button type="button" id="cad-btn-buscar">Buscar</button>
+        <button type="button" id="cad-btn-novo">+ Novo</button>
+      </div>
+      <form id="cad-form" class="cad-form" hidden></form>
+      <p id="cad-total" class="secao-info"></p>
+      <div id="cad-lista"></div>
+    </section>
+
+    <!-- 8) Debug -->
     <section class="frame" id="screen-debug" hidden>
       <h2>Debug</h2>
 
@@ -510,7 +667,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.21.0"></script>
+  <script src="app.js?v=5.22.0"></script>
 </body>
 </html>
 

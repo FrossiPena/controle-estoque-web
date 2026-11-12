@@ -63,6 +63,13 @@ preço, Sapiens, forro, veículo exigido; mesmo código = mesma peça em qualque
 4. Preencher comprimento útil e carga máxima em `veiculos`; primeiro admin:
    `insert into estoque.usuario_papeis (usuario, papel) values ('fernando', 'admin');`
 
+## 4c. Envio de grua (operação e telas)
+1. Migration `20261112130000_envio_operacao.sql` (envios, romaneios, itens, leituras, fotos, histórico, bucket `romaneios`).
+2. Edge Function `romaneio` (com `_shared/configurador.mjs`), Verify JWT desligado; conferir `…/functions/v1/romaneio?modo=diag`.
+3. Papéis: `insert into estoque.usuario_papeis (usuario, papel) values ('fernando', 'admin');` (depois pela tela Cadastros).
+4. O usuário precisa existir no Supabase Auth (seção 3). Sem a carga da RELAÇÃO/Validação/MachineCards o configurador
+   não acha lanças/GTs e a conferência não acha as peças.
+
 ## 5. Acompanhar
 - Falhas: `select * from estoque.espelho_log where not ok order by id desc;` (o `detalhe` traz o pedido completo).
 - Tudo de um usuário: `select * from estoque.espelho_log where usuario = 'fernando' order by id desc limit 50;`
