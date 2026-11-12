@@ -143,7 +143,11 @@ for (const aba of relacao.wb.SheetNames) {
     if (cProd >= 0 && txt(r[cProd])) valorPeca(k, "sapiens_produto", txt(r[cProd]), onde);
     if (cDer >= 0 && txt(r[cDer])) valorPeca(k, "sapiens_derivacao", txt(r[cDer]).padStart(3, "0"), onde);
     // Preço: um por Código C (diferença entre modelos = erro de cadastro, vai para o relatório); centavos
-    const reais = v => (v == null ? null : Math.round(v * 100) / 100);
+    const reais = v => {
+      if (v == null) return null;
+      if (v < 0) { avisar("preço negativo na planilha", onde, bruto, `${v} (deixado em branco)`); return null; }
+      return Math.round(v * 100) / 100;
+    };
     if (cPr >= 0) valorPeca(k, "preco_padrao", reais(num(r[cPr])), onde);
     if (cVu >= 0) valorPeca(k, "valor_unitario", reais(num(r[cVu])), onde);
     if (vistos.has(k)) avisar("código repetido na aba", onde, bruto, "");

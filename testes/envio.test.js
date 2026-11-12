@@ -40,6 +40,7 @@ const relacao = livro("relacao.xlsx", {
     ["", "LANÇA 2 (peso diferente)", 1, 0, 1, 1, 420000, "C051.001-621.111", 2100, 10, "", 146000036, 1, 420000],
     ["", "TORRE"],
     ["", "ELEMENTO DE TORRE 4,14M", 1, 0, 1, "", 460000, "C028.047-332.111", 2300, 4.14, "", 146000104, 1, 460000],
+    ["", "PEÇA COM PREÇO NEGATIVO", 1, 0, 1, "", -5, "C041.001-621.111", 100, 1, "", "", "", -5],
   ],
 });
 
@@ -126,6 +127,8 @@ assert.match(pecas.C051023611111.pendencias, /preco_padrao diferente entre abas/
 assert.match(pecas.C051001812111.pendencias, /peça sem peso/);
 assert.match(pecas.C028097312111.pendencias, /dois códigos na célula/);
 assert.strictEqual(pecas.C051045411000.pendencias, "", "peça sem problema fica sem pendência");
+assert.strictEqual(pecas.C041001621111.preco_padrao, "", "preço negativo fica em branco");
+assert.match(pecas.C041001621111.pendencias, /preço negativo/);
 console.log("ok - preço único por Código C, divergências no relatório e na coluna pendencias");
 
 // Regras
