@@ -61,6 +61,7 @@ const servidor = http.createServer((req, res) => {
       return { id, romaneios: p.veiculos.length };
     },
     envios: () => ({ envios: S.envios.map(e => ({ ...e, romaneios: S.roms.filter(r => r.envio_id === e.id).length, confirmados: 0,
+      por_status: S.roms.filter(r => r.envio_id === e.id).reduce((m, r) => (m[r.status] = (m[r.status] || 0) + 1, m), {}),
       previstas: 0, lidas: S.leituras.length })) }),
     envio: (p) => ({ envio: S.envios.find(e => e.id === p.id), romaneios: S.roms.filter(r => r.envio_id === p.id).map(r => ({
       id: r.id, numero: r.numero, veiculo: r.veiculo, status: r.status, previstas: r.itens.reduce((s, i) => s + i.qtd, 0),
@@ -110,8 +111,10 @@ const servidor = http.createServer((req, res) => {
       r.status = "conferido"; r.justificativa = p.justificativa;
       return { faltas };
     },
-    cad_listar: (p) => (S.ultimaBusca = p.busca, false) ? null : p.tabela === "motoristas" ? ({ podeEditar: true, total: 0, linhas: [],
-        colunas: ["id", "nome", "cpf", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"] })
+    cad_listar: (p) => (S.ultimaBusca = p.busca, false) ? null : p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, linhas: [],
+        colunas: ["id", "nome", "cnpj", "contato_nome", "contato_telefone", "email_nf", "ativo"] }) : p.tabela === "motoristas" ? ({ podeEditar: true, total: 1,
+        linhas: [{ id: 9, cpf: "52998224725", nome: "Elon Silva Musk", ativo: true }],
+        colunas: ["id", "cpf", "nome", "celular", "celular2", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"] })
       : p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, colunas: ["id", "nome", "cnpj", "ativo"], linhas: [] })
       : p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
       colunas: ["id", "tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade", "uf", "cep", "obs", "ativo"],
@@ -160,7 +163,10 @@ const servidor = http.createServer((req, res) => {
     await page.evaluate(() => showScreen("envio"));
     await page.waitForFunction(() => /Papéis: admin/.test(document.getElementById("env-status").textContent));
     assert.ok(await page.isVisible("#env-btn-novo"));
-    assert.match(await texto("#env-envios"), /Nenhum envio em aberto/);
+    assert.match(await texto("#env-envios"), /Nenhum envio com romaneio nos status marcados/);
+    assert.deepStrictEqual(await page.$$eval("#env-filtro input:checked", l => l.map(i => i.value)),
+      ["planejado", "iniciado", "conferido", "aguardando_nota"], "filtro padrão");
+    assert.strictEqual(await page.locator("#env-filtro input").count(), 7);
     console.log("ok - Envio de grua: entra no Supabase, mostra papéis e lista vazia");
 
     // B) Novo envio → prévia → salvar
@@ -290,6 +296,12 @@ const servidor = http.createServer((req, res) => {
     await page.click("#env-btn-excluir-geral");
     await page.waitForFunction(() => /Envio excluído/.test(document.getElementById("env-status").textContent));
     assert.ok(S.roms.every(r => r.status === "excluido"));
+    // Lista: envio todo excluído some com o filtro padrão e aparece marcando "Excluído"
+    await page.click("#env-detalhe .env-voltar");
+    await page.waitForFunction(() => /Nenhum envio com romaneio/.test(document.getElementById("env-envios").textContent));
+    await page.check("#env-f-excluido");
+    await page.waitForFunction(() => /Romaneios: \d+ excluído/.test(document.getElementById("env-envios").textContent));
+    await page.uncheck("#env-f-excluido");
     console.log("ok - status: conferido → aguardando nota → concluído (NF); excluir envio só planejados / geral com EXCLUIR");
 
     // E) Cadastros
@@ -371,13 +383,34 @@ const servidor = http.createServer((req, res) => {
     await page.waitForFunction(() => /CNPJ encontrado/.test(document.getElementById("cad-status").textContent));
     assert.strictEqual(await page.inputValue("#cad-f-cnpj"), "11.222.333/0001-81");
     assert.strictEqual(await page.inputValue("#cad-f-nome"), "CONSTRUTORA X S/A");
+    await page.fill("#cad-f-contato_telefone", "3133334444");
+    assert.strictEqual(await page.inputValue("#cad-f-contato_telefone"), "(31) 3333-4444");
+    await page.fill("#cad-f-email_nf", "nf-sem-arroba");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /E-mail da nota fiscal inválido/.test(document.getElementById("cad-status").textContent));
     console.log("ok - Transportadora: Buscar CNPJ com máscara e nome da Receita");
 
     // Motorista: transportadora pelo nome, sugestão a partir de 2 letras
     await page.selectOption("#cad-tabela", "motoristas");
-    await page.waitForFunction(() => /0 registro/.test(document.getElementById("cad-total").textContent));
+    await page.waitForFunction(() => /1 registro/.test(document.getElementById("cad-total").textContent));
     await page.click("#cad-btn-novo");
     assert.ok(await page.isHidden("#cad-f-transportadora_id"), "id da transportadora não aparece");
+    // CPF primeiro: máscara, vermelho, sugestão do CPF parecido e trava de duplicidade
+    const ordem = await page.$$eval("#cad-form input:not([type=hidden])", l => l.map(e => e.id));
+    assert.strictEqual(ordem[0], "cad-f-cpf", "CPF é o primeiro campo");
+    await page.fill("#cad-f-cpf", "529");
+    assert.ok(await page.$eval("#cad-f-cpf", e => e.classList.contains("campo-invalido")));
+    assert.match(await page.locator("#cad-sug-cpf").innerText(), /529.982.247-25 · Elon Silva Musk/);
+    await page.fill("#cad-f-cpf", "52998224725");
+    assert.strictEqual(await page.inputValue("#cad-f-cpf"), "529.982.247-25");
+    assert.match(await page.locator("#cad-sug-cpf").innerText(), /já cadastrado para Elon Silva Musk/);
+    await page.fill("#cad-f-nome", "Elon S. Musk");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /não dá para cadastrar de novo/.test(document.getElementById("cad-status").textContent));
+    await page.fill("#cad-f-cpf", "11144477735");
+    assert.ok(!(await page.$eval("#cad-f-cpf", e => e.classList.contains("campo-invalido"))));
+    await page.fill("#cad-f-celular", "31987654321");
+    assert.strictEqual(await page.inputValue("#cad-f-celular"), "(31) 98765-4321");
     await page.fill("#cad-f-nome", "Motorista Teste");
     await page.fill("#cad-f-transportadora", "c");
     assert.strictEqual(await page.locator("#cad-sug-transportadora .cad-sugestao").count(), 0, "1 letra: sem sugestão");
@@ -388,6 +421,7 @@ const servidor = http.createServer((req, res) => {
     await page.click("#cad-btn-salvar");
     await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
     assert.strictEqual(S.cad[S.cad.length - 1].dados.transportadora_id, "3");
+    assert.strictEqual(S.cad[S.cad.length - 1].dados.cpf, "111.444.777-35");
     console.log("ok - Motorista: transportadora pelo nome com sugestões");
 
     // F) Usuário sem papel e usuário consulta

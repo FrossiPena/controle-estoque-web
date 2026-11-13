@@ -1,3 +1,5 @@
+// v6.2.0 - Motorista pelo CPF (primeiro campo, máscara, sugestões, sem duplicidade), celulares; transportadora com
+//          contato operacional e e-mail da NF (CT-e); romaneio: CPF puxa o motorista
 // v6.1.1 - Novo envio: avisos viram "Divergências de cadastro" com código + descrição; tocar abre o cadastro da
 //          peça e "← Voltar ao novo envio" mantém o formulário
 // v6.1.0 - Romaneio: planejado/iniciado/conferido/aguardando nota/concluído/sinistrado/excluído (pedir nota,
@@ -58,7 +60,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.1.1";
+const APP_VERSION = "v6.2.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2781,21 +2783,52 @@ async function abrirEnvio() {
 }
 
 // ---------- Lista ----------
+// Filtro da lista por status do romaneio; a escolha fica guardada no aparelho
+const FILTRO_PADRAO = ["planejado", "iniciado", "conferido", "aguardando_nota"];
+function envFiltroStatus() {
+  const marcados = [...document.querySelectorAll("#env-filtro input:checked")].map(i => i.value);
+  try { localStorage.setItem("ce_env_filtro", JSON.stringify(marcados)); } catch {}
+  return marcados;
+}
+function montarFiltroEnvios() {
+  const box = envEl("env-filtro");
+  if (!box || box.childElementCount) return;
+  let salvos = null;
+  try { salvos = JSON.parse(localStorage.getItem("ce_env_filtro") || "null"); } catch {}
+  Object.entries(ROM_STATUS).forEach(([k, rot]) => {
+    const lab = eqEl("label", "env-check");
+    const c = document.createElement("input"); c.type = "checkbox"; c.value = k; c.id = "env-f-" + k;
+    c.checked = (Array.isArray(salvos) ? salvos : FILTRO_PADRAO).includes(k);
+    c.addEventListener("change", carregarEnvios);
+    lab.append(c, document.createTextNode(" " + rot));
+    box.appendChild(lab);
+  });
+}
+
 async function carregarEnvios() {
+  montarFiltroEnvios();
   const box = envEl("env-envios");
   box.replaceChildren(eqEl("p", "secao-info", "Carregando envios…"));
-  const j = await romPost("envios", { todos: envEl("env-todos").checked });
+  const marcados = envFiltroStatus();
+  const j = await romPost("envios", { todos: true });
   box.replaceChildren();
   if (!j.ok) { box.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); return; }
-  if (!j.envios.length) { box.appendChild(eqEl("p", "secao-info", "Nenhum envio em aberto.")); return; }
+  // Envio aparece se algum romaneio dele está num status marcado (envio sem romaneio conta como planejado)
+  const envios = j.envios.filter(e => {
+    const st = Object.keys(e.por_status || {});
+    return (st.length ? st : ["planejado"]).some(x => marcados.includes(x));
+  });
+  if (!envios.length) { box.appendChild(eqEl("p", "secao-info", "Nenhum envio com romaneio nos status marcados.")); return; }
   let grupo = null;
-  j.envios.forEach(e => {
+  envios.forEach(e => {
     const g = `${e.cliente} – ${e.gt}`;
     if (g !== grupo) { grupo = g; box.appendChild(eqEl("h3", "eq-grupo", g)); }
     const card = eqEl("button", "env-card env-envio-" + e.status);
     card.type = "button";
     card.appendChild(eqEl("div", "eq-item-titulo", `${e.obra || "Envio"} #${e.id} · ${e.modelo}`));
-    card.appendChild(eqEl("div", "", `${e.validos ?? e.romaneios} veículo(s), ${e.confirmados} conferido(s) · peças ${e.lidas}/${e.previstas}`));
+    card.appendChild(eqEl("div", "", `${e.validos ?? e.romaneios} veículo(s) · peças ${e.lidas}/${e.previstas}`));
+    const resumo = Object.keys(ROM_STATUS).filter(k => (e.por_status || {})[k]).map(k => `${e.por_status[k]} ${ROM_STATUS[k].toLowerCase()}`).join(" · ");
+    if (resumo) card.appendChild(eqEl("div", "env-sub", "Romaneios: " + resumo));
     card.appendChild(eqEl("div", "env-sub", `${ENVIO_STATUS[e.status] || e.status} · criado por ${e.criado_por} em ${new Date(e.criado_em).toLocaleDateString("pt-BR")}`));
     card.addEventListener("click", () => abrirEnvioDetalhe(e.id));
     box.appendChild(card);
@@ -3264,7 +3297,7 @@ async function confirmarRomaneio() {
 }
 
 /* ---------- Cadastros ---------- */
-const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false, empresas: [], todosClientes: [] };
+const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false, empresas: [], todosClientes: [], todosMotoristas: [] };
 const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito)", descricao: "Descrição", peso_kg: "Peso (kg)",
   comp_m: "Comprimento (m)", larg_m: "Largura (m)", alt_m: "Altura (m)", preco_padrao: "Preço padrão", valor_unitario: "Valor unitário (NF)",
   sapiens_produto: "Sapiens produto", sapiens_derivacao: "Sapiens derivação", veiculo_exigido: "Veículo exigido",
@@ -3273,7 +3306,9 @@ const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito
   endereco_envio: "Endereço de envio", cnpj: "CNPJ", cpf: "CPF", transportadora_id: "Transportadora", placa: "Placa",
   tipo: "Tipo", pai_id: "Empresa (construtora)", razao_social: "Razão social", nome_fantasia: "Nome fantasia",
   cidade: "Cidade", uf: "UF", cep: "CEP", placa_cavalo: "Última placa do cavalo", placa_carreta1: "Última placa da carreta 1",
-  placa_carreta2: "Última placa da carreta 2", usuario: "Usuário", papel: "Papel", id: "Id" };
+  placa_carreta2: "Última placa da carreta 2", celular: "Celular", celular2: "Celular alternativo",
+  contato_nome: "Contato operacional (nome)", contato_telefone: "Contato operacional (telefone)",
+  email_nf: "E-mail para envio da nota fiscal (emissão do CT-e)", usuario: "Usuário", papel: "Papel", id: "Id" };
 const CAD_BOOL = new Set(["vai_embaixo", "padrao", "ativo"]);
 const PAPEIS = ["admin", "cadastro", "expedicao", "operacional", "consulta"];
 
@@ -3325,12 +3360,13 @@ async function carregarCadastro() {
   if (!j.ok) { lista.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); envEl("cad-total").textContent = ""; return; }
   // Clientes: a lista completa (sem a busca) dá o cliente de cada obra e as obras de cada cliente
   let todos = j.linhas;
-  if (tabela === "clientes" && envEl("cad-busca").value) {
+  if ((tabela === "clientes" || tabela === "motoristas") && envEl("cad-busca").value) {
     const k = await romPost("cad_listar", { tabela, busca: "" });
     if (k.ok) todos = k.linhas;
   }
   Object.assign(CAD, { colunas: j.colunas, linhas: j.linhas, podeEditar: j.podeEditar, tabela,
     todosClientes: tabela === "clientes" ? todos : [],
+    todosMotoristas: tabela === "motoristas" ? todos : [],
     empresas: tabela === "clientes" ? todos.filter(l => l.tipo !== "obra").sort((a, b) => a.nome.localeCompare(b.nome)) : [] });
   envEl("cad-btn-novo").hidden = !j.podeEditar;
   envEl("cad-total").textContent = `${j.total} registro(s)` + (j.total > j.linhas.length ? ` (mostrando ${j.linhas.length}; use a busca)` : "");
@@ -3340,6 +3376,7 @@ async function carregarCadastro() {
     const chave = j.colunas[0];
     const titulo = tabela === "pecas" ? `${l.codigo_exibicao} · ${l.descricao || ""}`
                  : tabela === "usuario_papeis" ? `${l.usuario} · ${l.papel}`
+                 : tabela === "motoristas" ? `${l.nome}${l.cpf ? " · CPF " + fmtCpf(l.cpf) : ""}`
                  : tabela === "clientes" ? (l.tipo === "obra"
                      ? `Obra ${l.nome} · de ${(CAD.todosClientes.find(c => String(c.id) === String(l.pai_id)) || {}).nome || "cliente não encontrado"}`
                      : `${l.nome}${l.cnpj ? " · " + fmtCnpj(l.cnpj) : ""}`)
@@ -3390,12 +3427,17 @@ function editarCadastro(linha, padrao) {
     }
     else if (k === "cnpj") { inp = document.createElement("input"); inp.inputMode = "numeric"; inp.value = linha?.cnpj ? fmtCnpj(linha.cnpj) : ""; }
     else if (k === "transportadora_id") { inp = document.createElement("input"); inp.type = "hidden"; inp.value = ini(k) ?? ""; }
+    else if (k === "cpf") { inp = document.createElement("input"); inp.inputMode = "numeric"; inp.value = linha?.cpf ? fmtCpf(linha.cpf) : ""; }
+    else if (["celular", "celular2", "contato_telefone"].includes(k)) { inp = document.createElement("input"); inp.inputMode = "tel"; inp.value = fmtFone(linha?.[k]); }
+    else if (k === "email_nf") { inp = document.createElement("input"); inp.type = "email"; inp.value = linha?.[k] ?? ""; }
     else { inp = document.createElement("input"); inp.value = ini(k) ?? ""; }
     inp.id = "cad-f-" + k;
     inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
     campos[k] = inp;
     f.append(eqEl("label", "campo-label", CAD_ROTULOS[k] || k), inp);
     if (k === "transportadora_id") inp.before(...campoBuscaTransportadora(inp, !CAD.podeEditar));
+    if (["celular", "celular2", "contato_telefone"].includes(k)) inp.addEventListener("input", () => { inp.value = fmtFone(inp.value); });
+    if (k === "cpf" && tabela === "motoristas") inp.after(campoBuscaCpf(inp, linha));
     if (k === "cnpj" && (tabela === "clientes" || tabela === "transportadoras") && CAD.podeEditar) {
       const b = eqEl("button", "", "Buscar CNPJ"); b.type = "button"; b.id = "cad-btn-cnpj";
       b.addEventListener("click", () => buscarCnpj(campos));
@@ -3439,6 +3481,16 @@ function editarCadastro(linha, padrao) {
       if (tabela === "transportadoras" && String(d.cnpj || "").replace(/\D/g, "").length !== 14) {
         cadStatus("CNPJ da transportadora precisa ter 14 dígitos."); return;
       }
+      if (tabela === "transportadoras" && d.email_nf && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email_nf.trim())) {
+        cadStatus("E-mail da nota fiscal inválido."); return;
+      }
+      if (tabela === "motoristas") {
+        const cpf = String(d.cpf || "").replace(/\D/g, "");
+        if (cpf.length !== 11) { cadStatus("CPF do motorista precisa ter 11 dígitos."); return; }
+        const outro = CAD.todosMotoristas.find(m => m.cpf === cpf && (novo || String(m.id) !== String(linha.id)));
+        if (outro) { cadStatus(`CPF já cadastrado para ${outro.nome}: não dá para cadastrar de novo.`); return; }
+        if (!String(d.nome || "").trim()) { cadStatus("Informe o nome do motorista."); return; }
+      }
       salvarCadastro(d, false);
     });
     const ac = eqEl("div", "env-acoes"); ac.appendChild(b); f.appendChild(ac);
@@ -3469,6 +3521,43 @@ function editarCadastro(linha, padrao) {
     f.appendChild(sec);
   }
   f.scrollIntoView({ behavior: "smooth" });
+}
+
+const fmtCpf = c => {
+  const n = String(c || "").replace(/\D/g, "").slice(0, 11);
+  return n.replace(/^(\d{3})(\d)/, "$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d{1,2})$/, ".$1-$2");
+};
+const fmtFone = t => {
+  const n = String(t || "").replace(/\D/g, "").slice(0, 11);
+  if (n.length <= 2) return n ? `(${n}` : "";
+  if (n.length <= 6) return `(${n.slice(0, 2)}) ${n.slice(2)}`;
+  if (n.length <= 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;
+  return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
+};
+
+// CPF do motorista primeiro: máscara, vermelho até 11 dígitos e, a partir de 3 dígitos, os CPFs cadastrados
+// que começam igual (tocar abre o cadastro). CPF completo já cadastrado em outro motorista: abre esse cadastro.
+function campoBuscaCpf(inp, linha) {
+  const sug = eqEl("div", "cad-sugestoes"); sug.id = "cad-sug-cpf";
+  const outros = () => CAD.todosMotoristas.filter(m => m.cpf && (!linha || String(m.id) !== String(linha.id)));
+  const atualizar = () => {
+    const n = inp.value.replace(/\D/g, "").slice(0, 11);
+    inp.value = fmtCpf(n);
+    inp.classList.toggle("campo-invalido", n.length !== 11);
+    sug.replaceChildren();
+    if (n.length < 3) return;
+    const iguais = outros().filter(m => m.cpf.startsWith(n)).slice(0, 6);
+    const exato = iguais.find(m => m.cpf === n);
+    if (exato) sug.appendChild(eqEl("div", "eq-aviso", `CPF já cadastrado para ${exato.nome}.`));
+    iguais.forEach(m => {
+      const b = eqEl("button", "cad-sugestao", `${fmtCpf(m.cpf)} · ${m.nome}`); b.type = "button";
+      b.addEventListener("click", () => editarCadastro(m));
+      sug.appendChild(b);
+    });
+  };
+  inp.addEventListener("input", atualizar);
+  setTimeout(atualizar, 0);
+  return sug;
 }
 
 // CNPJ incompleto fica vermelho (obrigatório só para o cliente; obra pode ficar vazia)
@@ -3522,7 +3611,6 @@ async function salvarCadastro(dados, excluir) {
 
 window.addEventListener("DOMContentLoaded", () => {
   envEl("env-btn-novo")?.addEventListener("click", novoEnvio);
-  envEl("env-todos")?.addEventListener("change", carregarEnvios);
   document.querySelectorAll(".env-voltar").forEach(b => b.addEventListener("click", () => {
     if (b.dataset.voltar === "detalhe" && ENV.envioId) abrirEnvioDetalhe(ENV.envioId);
     else { envView("lista"); carregarEnvios(); }
@@ -3557,6 +3645,16 @@ window.addEventListener("DOMContentLoaded", () => {
   envEl("env-btn-dados")?.addEventListener("click", salvarDadosRomaneio);
   envEl("env-btn-confirmar")?.addEventListener("click", confirmarRomaneio);
   envEl("env-foto")?.addEventListener("change", e => enviarFotoRomaneio(e.target.files && e.target.files[0]));
+  envEl("env-cpf")?.addEventListener("input", () => {
+    const n = envEl("env-cpf").value.replace(/\D/g, "");
+    envEl("env-cpf").value = fmtCpf(n);
+    envEl("env-cpf").classList.toggle("campo-invalido", n.length > 0 && n.length !== 11);
+    const m = n.length === 11 && (ENV.opcoes?.motoristas || []).find(x => x.cpf === n);
+    if (!m) return;
+    envEl("env-motorista").value = m.nome;
+    [["env-placa-cavalo", "placa_cavalo"], ["env-placa-c1", "placa_carreta1"], ["env-placa-c2", "placa_carreta2"]]
+      .forEach(([id, k]) => { if (m[k] && !envEl(id).value) envEl(id).value = m[k]; });
+  });
   envEl("env-motorista")?.addEventListener("change", () => {
     const m = (ENV.opcoes?.motoristas || []).find(x => eqNorm(x.nome) === eqNorm(envEl("env-motorista").value));
     if (!m) return;

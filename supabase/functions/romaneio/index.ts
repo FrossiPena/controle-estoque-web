@@ -1,3 +1,4 @@
+// romaneio v1.3 - motorista pelo CPF (único; duplicidade recusada), celulares; transportadora com contato e e-mail da NF
 // romaneio v1.2 - status planejado/iniciado/conferido/aguardando_nota/concluido/sinistrado/excluido; excluir envio
 // romaneio v1.1 - clientes com CNPJ e obras (pai_id), motorista guarda as últimas placas, cad_excluir
 // romaneio v1.0 - Envio de grua: configurador, romaneios por veículo, conferência por QR, fotos e cadastros.
@@ -9,7 +10,7 @@ import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import { montarLista, distribuirVeiculos, chaveCodigo } from "../_shared/configurador.mjs";
 
-const VERSION = "romaneio-v1.2";
+const VERSION = "romaneio-v1.3";
 const TZ = "America/Sao_Paulo";
 const BUCKET = "romaneios";
 const ORIGENS = [/^https:\/\/frossipena\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -176,15 +177,18 @@ const CADASTROS: Record<string, { chave: string; colunas: string[]; papel: strin
               ordem: "ordem", busca: ["nome"] },
   clientes: { chave: "id", colunas: ["tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade",
               "uf", "cep", "obs", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cnpj", "razao_social", "nome_fantasia"] },
-  transportadoras: { chave: "id", colunas: ["nome", "cnpj", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cnpj"] },
-  motoristas: { chave: "id", colunas: ["nome", "cpf", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cpf"] },
+  transportadoras: { chave: "id", colunas: ["nome", "cnpj", "contato_nome", "contato_telefone", "email_nf", "ativo"],
+                     papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cnpj", "contato_nome"] },
+  motoristas: { chave: "id", colunas: ["cpf", "nome", "celular", "celular2", "transportadora_id", "placa_cavalo", "placa_carreta1",
+                "placa_carreta2", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["cpf", "nome", "celular"] },
   placas: { chave: "placa", colunas: ["tipo", "transportadora_id", "ativo"], papel: ["cadastro", "expedicao"], ordem: "placa", busca: ["placa"] },
   usuario_papeis: { chave: "usuario", colunas: ["papel"], papel: ["admin"], ordem: "usuario", busca: ["usuario"] },
 };
 const COLS_NUM = new Set(["peso_kg", "comp_m", "larg_m", "alt_m", "preco_padrao", "valor_unitario", "comp_util_m", "carga_max_kg", "ordem", "transportadora_id", "pai_id"]);
 const COLS_BOOL = new Set(["vai_embaixo", "padrao", "ativo"]);
 function valorCampo(col: string, v: unknown) {
-  if (col === "cnpj" || col === "cpf") return txt(v).replace(/\D/g, "") || null;
+  if (["cnpj", "cpf", "celular", "celular2", "contato_telefone"].includes(col)) return txt(v).replace(/\D/g, "") || null;
+  if (col === "email_nf") return txt(v).toLowerCase() || null;
   if (col.startsWith("placa")) return txt(v).toUpperCase().replace(/[^0-9A-Z]/g, "") || null;
   if (COLS_NUM.has(col)) return txt(v) === "" ? null : num(v);
   if (COLS_BOOL.has(col)) return v === true || ["true", "sim", "1"].includes(txt(v).toLowerCase());
@@ -210,7 +214,7 @@ const MODOS: Record<string, Modo> = {
       lastros: lastros.map(l => ({ ...l, lastro_t: Number(l.lastro_t) })),
       clientes: await tx`select id, tipo, pai_id, nome, cnpj, endereco_envio, cidade, uf from estoque.clientes where ativo order by nome`,
       transportadoras: await tx`select id, nome from estoque.transportadoras where ativo order by nome`,
-      motoristas: await tx`select id, nome, cpf, transportadora_id, placa_cavalo, placa_carreta1, placa_carreta2
+      motoristas: await tx`select id, nome, cpf, celular, transportadora_id, placa_cavalo, placa_carreta1, placa_carreta2
                            from estoque.motoristas where ativo order by nome`,
       placas: await tx`select placa, tipo from estoque.placas where ativo order by placa`,
     };
@@ -273,7 +277,9 @@ const MODOS: Record<string, Modo> = {
              (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status in ('conferido','aguardando_nota','concluido')) as confirmados,
              (select coalesce(sum(i.qtd), 0)::int from estoque.romaneio_itens i join estoque.romaneios r on r.id = i.romaneio_id
                where r.envio_id = e.id and r.status <> 'excluido') as previstas,
-             (select count(*)::int from estoque.romaneio_leituras l where l.envio_id = e.id) as lidas
+             (select count(*)::int from estoque.romaneio_leituras l where l.envio_id = e.id) as lidas,
+             (select coalesce(json_object_agg(x.status, x.n), '{}'::json) from
+               (select r.status, count(*)::int n from estoque.romaneios r where r.envio_id = e.id group by r.status) x) as por_status
       from estoque.envios e where ${todos} or e.status = 'aberto' order by e.cliente, e.gt, e.criado_em desc`;
     return { envios: rows };
   },
@@ -430,7 +436,9 @@ const MODOS: Record<string, Modo> = {
       const pl = { placa_cavalo: d.placa_cavalo ?? r.placa_cavalo ?? null, placa_carreta1: d.placa_carreta1 ?? r.placa_carreta1 ?? null,
                    placa_carreta2: d.placa_carreta2 ?? r.placa_carreta2 ?? null };
       const cpf = txt(d.cpf_motorista ?? r.cpf_motorista).replace(/\D/g, "") || null;
-      const [m] = await tx`select id, cpf from estoque.motoristas where lower(nome) = lower(${nome}) limit 1`;
+      // CPF identifica o motorista (o nome pode vir escrito de outro jeito); sem CPF, pelo nome
+      const [m] = cpf ? await tx`select id, cpf from estoque.motoristas where cpf = ${cpf} limit 1`
+                      : await tx`select id, cpf from estoque.motoristas where lower(nome) = lower(${nome}) and cpf is null limit 1`;
       if (m) await tx`update estoque.motoristas set ${tx({ ...pl, cpf: cpf || m.cpf })} where id = ${m.id}`;
       else await tx`insert into estoque.motoristas ${tx({ nome, cpf, ...pl })}`;
     }
@@ -598,6 +606,12 @@ const MODOS: Record<string, Modo> = {
     }
     if (tabela === "pecas") Object.assign(d, { atualizado_por: c.usuario, atualizado_em: new Date() });
     if (tabela === "placas" && "placa" in dados) dados.placa = txt(dados.placa).toUpperCase();
+    if (tabela === "motoristas") {
+      if (!d.cpf || String(d.cpf).length !== 11) throw new Recusa("CPF do motorista precisa ter 11 dígitos");
+      const [outro] = await tx`select id, nome from estoque.motoristas where cpf = ${d.cpf as string}
+                               and id is distinct from ${txt(dados.id) ? int(dados.id) : null}`;
+      if (outro) throw new Recusa(`CPF já cadastrado para ${outro.nome}`, { duplicado: outro.id });
+    }
     const chave = dados[def.chave];
     let antes = null, depois;
     if (txt(chave)) {

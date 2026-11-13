@@ -1,13 +1,13 @@
-<!-- index.html - v6.1.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.2.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.1.1" />
+  <meta name="app-version" content="v6.2.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.1.1" />
+  <link rel="stylesheet" href="style.css?v=6.2.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -486,8 +486,9 @@
         <h2>Envio de grua</h2>
         <div class="env-acoes">
           <button type="button" id="env-btn-novo">+ Novo envio</button>
-          <label class="env-check"><input type="checkbox" id="env-todos" /> mostrar concluídos e excluídos</label>
         </div>
+        <p class="secao-info">Mostrar envios com romaneio:</p>
+        <div id="env-filtro" class="env-filtro"></div>
         <div id="env-envios"></div>
       </div>
 
@@ -606,11 +607,11 @@
         <label class="campo-label" for="env-transp">Transportadora</label>
         <input type="text" id="env-transp" list="env-transps" autocomplete="off" />
         <datalist id="env-transps"></datalist>
+        <label class="campo-label" for="env-cpf">CPF do motorista (puxa o cadastro)</label>
+        <input type="text" id="env-cpf" inputmode="numeric" />
         <label class="campo-label" for="env-motorista">Motorista</label>
         <input type="text" id="env-motorista" list="env-motoristas" autocomplete="off" />
         <datalist id="env-motoristas"></datalist>
-        <label class="campo-label" for="env-cpf">CPF do motorista</label>
-        <input type="text" id="env-cpf" inputmode="numeric" />
         <label class="campo-label" for="env-placa-cavalo">Placa do cavalo</label>
         <input type="text" id="env-placa-cavalo" class="env-placa" />
         <label class="campo-label" for="env-placa-c1">Placa da carreta 1</label>
@@ -701,7 +702,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.1.1"></script>
+  <script src="app.js?v=6.2.0"></script>
 </body>
 </html>
 
