@@ -1,3 +1,4 @@
+// v6.0.2 - Motorista: transportadora escolhida pelo nome (sugestões a partir de 2 letras), não mais pelo id
 // v6.0.1 - Transportadora: "Buscar CNPJ" (nome pela Receita), CNPJ vermelho até ter 14 dígitos
 // v6.0.0 - Envio de grua completo (Supabase). Clientes: CNPJ vermelho até ter 14 dígitos e com máscara antes da busca; "+ Cadastrar obra" já ligada ao
 //          cliente, lista das obras do cliente, obra pode ter CNPJ (SPE), trocar cliente ↔ obra; envio: obra = o cliente
@@ -52,7 +53,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.0.1";
+const APP_VERSION = "v6.0.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -3123,7 +3124,7 @@ const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito
   sapiens_produto: "Sapiens produto", sapiens_derivacao: "Sapiens derivação", veiculo_exigido: "Veículo exigido",
   vai_embaixo: "Vai embaixo (forro)", obs: "Observação", pendencias: "Pendências de cadastro", nome: "Nome",
   comp_util_m: "Comprimento útil (m)", carga_max_kg: "Carga máxima (kg)", padrao: "Veículo padrão", ordem: "Ordem", ativo: "Ativo",
-  endereco_envio: "Endereço de envio", cnpj: "CNPJ", cpf: "CPF", transportadora_id: "Transportadora (id)", placa: "Placa",
+  endereco_envio: "Endereço de envio", cnpj: "CNPJ", cpf: "CPF", transportadora_id: "Transportadora", placa: "Placa",
   tipo: "Tipo", pai_id: "Empresa (construtora)", razao_social: "Razão social", nome_fantasia: "Nome fantasia",
   cidade: "Cidade", uf: "UF", cep: "CEP", placa_cavalo: "Última placa do cavalo", placa_carreta1: "Última placa da carreta 1",
   placa_carreta2: "Última placa da carreta 2", usuario: "Usuário", papel: "Papel", id: "Id" };
@@ -3142,8 +3143,35 @@ async function abrirCadastros() {
   carregarCadastro();
 }
 
+// Transportadora por nome: a partir de 2 letras mostra as que batem logo abaixo; tocar escolhe (guarda o id)
+function campoBuscaTransportadora(oculto, desabilitado) {
+  const lista = ENV.opcoes?.transportadoras || [];
+  const texto = document.createElement("input");
+  texto.id = "cad-f-transportadora"; texto.autocomplete = "off"; texto.placeholder = "Digite o nome (2 letras ou mais)";
+  texto.disabled = desabilitado;
+  texto.value = (lista.find(t => String(t.id) === String(oculto.value)) || {}).nome || "";
+  const sug = eqEl("div", "cad-sugestoes"); sug.id = "cad-sug-transportadora";
+  const mostrar = () => {
+    sug.replaceChildren();
+    const q = eqNorm(texto.value);
+    const exata = lista.find(t => eqNorm(t.nome) === q);
+    oculto.value = exata ? exata.id : "";
+    if (q.length < 2 || exata) return;
+    const achadas = lista.filter(t => eqNorm(t.nome).includes(q)).slice(0, 8);
+    if (!achadas.length) { sug.appendChild(eqEl("div", "env-sub", "Nenhuma transportadora com esse nome (cadastre em Transportadoras).")); return; }
+    achadas.forEach(t => {
+      const b = eqEl("button", "cad-sugestao", t.nome); b.type = "button";
+      b.addEventListener("click", () => { texto.value = t.nome; oculto.value = t.id; sug.replaceChildren(); });
+      sug.appendChild(b);
+    });
+  };
+  texto.addEventListener("input", mostrar);
+  return [texto, sug];
+}
+
 async function carregarCadastro() {
   const tabela = envEl("cad-tabela").value;
+  if (tabela === "motoristas" && !ENV.opcoes?.transportadoras) { const op = await romPost("opcoes"); if (op.ok) ENV.opcoes = op; }
   envEl("cad-form").hidden = true;
   const lista = envEl("cad-lista"); lista.replaceChildren(eqEl("p", "secao-info", "Carregando…"));
   const j = await romPost("cad_listar", { tabela, busca: envEl("cad-busca").value });
@@ -3172,7 +3200,8 @@ async function carregarCadastro() {
                  : `${l[chave]}${l.nome && chave !== "nome" ? " · " + l.nome : ""}`;
     card.appendChild(eqEl("div", "eq-item-titulo", titulo));
     const resumo = j.colunas.slice(1).filter(k => l[k] != null && l[k] !== "" && !["descricao", "nome", "pendencias", "codigo_exibicao"].includes(k))
-      .slice(0, 5).map(k => `${CAD_ROTULOS[k] || k}: ${l[k]}`).join(" · ");
+      .slice(0, 5).map(k => `${CAD_ROTULOS[k] || k}: ${k === "transportadora_id"
+        ? ((ENV.opcoes?.transportadoras || []).find(t => String(t.id) === String(l[k])) || {}).nome || l[k] : l[k]}`).join(" · ");
     if (resumo) card.appendChild(eqEl("div", "env-sub", resumo));
     if (l.pendencias) card.appendChild(eqEl("div", "eq-aviso", l.pendencias));
     card.addEventListener("click", () => editarCadastro(l));
@@ -3214,11 +3243,13 @@ function editarCadastro(linha, padrao) {
       inp.value = ini("pai_id") ? String(ini("pai_id")) : "";
     }
     else if (k === "cnpj") { inp = document.createElement("input"); inp.inputMode = "numeric"; inp.value = linha?.cnpj ? fmtCnpj(linha.cnpj) : ""; }
+    else if (k === "transportadora_id") { inp = document.createElement("input"); inp.type = "hidden"; inp.value = ini(k) ?? ""; }
     else { inp = document.createElement("input"); inp.value = ini(k) ?? ""; }
     inp.id = "cad-f-" + k;
     inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
     campos[k] = inp;
     f.append(eqEl("label", "campo-label", CAD_ROTULOS[k] || k), inp);
+    if (k === "transportadora_id") inp.before(...campoBuscaTransportadora(inp, !CAD.podeEditar));
     if (k === "cnpj" && (tabela === "clientes" || tabela === "transportadoras") && CAD.podeEditar) {
       const b = eqEl("button", "", "Buscar CNPJ"); b.type = "button"; b.id = "cad-btn-cnpj";
       b.addEventListener("click", () => buscarCnpj(campos));

@@ -44,7 +44,7 @@ const servidor = http.createServer((req, res) => {
     me: () => ({ usuario: S.usuario, papeis: S.papeis }),
     opcoes: () => ({ modelos: [{ nome: M, lancas: ["50m", "45m"] }], gts: [{ gt: "GT-10", modelo: M }],
       bases: [{ modelo: M, base: "CHUMBADOR X" }], torres: [{ modelo: M, base: "CHUMBADOR X", telescopagem: false, altura_m: 20.7 }],
-      lastros: [], frota, clientes: [{ id: 1, nome: "S11D", endereco_envio: "Canaã dos Carajás - PA" }], transportadoras: [], motoristas: [], placas: [] }),
+      lastros: [], frota, clientes: [{ id: 1, nome: "S11D", endereco_envio: "Canaã dos Carajás - PA" }], transportadoras: [{ id: 3, nome: "Cat Log" }, { id: 4, nome: "Transcarga" }], motoristas: [], placas: [] }),
     previa: (p) => {
       const cfg = { ...p.cfg, lanca_m: Number(p.cfg.lanca_m), altura_m: p.cfg.altura_m == null ? null : Number(p.cfg.altura_m) };
       const r = p.itens ? { itens: p.itens.filter(i => i.qtd > 0), avisos: [] } : montarLista(cfg, { relacaoItens, regras, pecas });
@@ -98,7 +98,9 @@ const servidor = http.createServer((req, res) => {
       r.status = "confirmado"; r.justificativa = p.justificativa;
       return { faltas };
     },
-    cad_listar: (p) => p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, colunas: ["id", "nome", "cnpj", "ativo"], linhas: [] })
+    cad_listar: (p) => p.tabela === "motoristas" ? ({ podeEditar: true, total: 0, linhas: [],
+        colunas: ["id", "nome", "cpf", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"] })
+      : p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, colunas: ["id", "nome", "cnpj", "ativo"], linhas: [] })
       : p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
       colunas: ["id", "tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade", "uf", "cep", "obs", "ativo"],
       linhas: [{ id: 7, tipo: "empresa", nome: "Construtora X", cnpj: "11222333000181", ativo: true },
@@ -311,6 +313,23 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(await page.inputValue("#cad-f-cnpj"), "11.222.333/0001-81");
     assert.strictEqual(await page.inputValue("#cad-f-nome"), "CONSTRUTORA X S/A");
     console.log("ok - Transportadora: Buscar CNPJ com máscara e nome da Receita");
+
+    // Motorista: transportadora pelo nome, sugestão a partir de 2 letras
+    await page.selectOption("#cad-tabela", "motoristas");
+    await page.waitForFunction(() => /0 registro/.test(document.getElementById("cad-total").textContent));
+    await page.click("#cad-btn-novo");
+    assert.ok(await page.isHidden("#cad-f-transportadora_id"), "id da transportadora não aparece");
+    await page.fill("#cad-f-nome", "Motorista Teste");
+    await page.fill("#cad-f-transportadora", "c");
+    assert.strictEqual(await page.locator("#cad-sug-transportadora .cad-sugestao").count(), 0, "1 letra: sem sugestão");
+    await page.fill("#cad-f-transportadora", "CA");
+    assert.deepStrictEqual(await page.locator("#cad-sug-transportadora .cad-sugestao").allInnerTexts(), ["Cat Log", "Transcarga"]);
+    await page.click("#cad-sug-transportadora >> text=Cat Log");
+    assert.strictEqual(await page.inputValue("#cad-f-transportadora"), "Cat Log");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
+    assert.strictEqual(S.cad[S.cad.length - 1].dados.transportadora_id, "3");
+    console.log("ok - Motorista: transportadora pelo nome com sugestões");
 
     // F) Usuário sem papel e usuário consulta
     S.papeis = [];
