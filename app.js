@@ -1,3 +1,4 @@
+// v6.0.1 - Transportadora: "Buscar CNPJ" (nome pela Receita), CNPJ vermelho até ter 14 dígitos
 // v6.0.0 - Envio de grua completo (Supabase). Clientes: CNPJ vermelho até ter 14 dígitos e com máscara antes da busca; "+ Cadastrar obra" já ligada ao
 //          cliente, lista das obras do cliente, obra pode ter CNPJ (SPE), trocar cliente ↔ obra; envio: obra = o cliente
 // v5.23.0 - Cadastros: cliente pelo CNPJ (BrasilAPI preenche razão social e endereço), obra como sub-cadastro da
@@ -51,7 +52,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.0.0";
+const APP_VERSION = "v6.0.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -3218,12 +3219,16 @@ function editarCadastro(linha, padrao) {
     inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
     campos[k] = inp;
     f.append(eqEl("label", "campo-label", CAD_ROTULOS[k] || k), inp);
-    if (k === "cnpj" && tabela === "clientes" && CAD.podeEditar) {
+    if (k === "cnpj" && (tabela === "clientes" || tabela === "transportadoras") && CAD.podeEditar) {
       const b = eqEl("button", "", "Buscar CNPJ"); b.type = "button"; b.id = "cad-btn-cnpj";
       b.addEventListener("click", () => buscarCnpj(campos));
       f.appendChild(b);
     }
   });
+  if (tabela === "transportadoras") {
+    campos.cnpj.addEventListener("input", () => validarCnpjCampo(campos.cnpj, true));
+    validarCnpjCampo(campos.cnpj, true);
+  }
   const filhas = tabela === "clientes" && linha ? CAD.todosClientes.filter(c => c.tipo === "obra" && String(c.pai_id) === String(linha.id)) : [];
   if (tabela === "clientes") {
     // Obra: mostra o cliente (pai); o CNPJ é opcional (obra SPE tem o próprio). Cliente: CNPJ obrigatório.
@@ -3253,6 +3258,9 @@ function editarCadastro(linha, padrao) {
         const n = String(d.cnpj || "").replace(/\D/g, "");
         if (d.tipo === "empresa" && n.length !== 14) { cadStatus("CNPJ do cliente precisa ter 14 dígitos."); return; }
         if (n && n.length !== 14) { cadStatus("CNPJ da obra incompleto (deixe vazio se ela não tiver)."); return; }
+      }
+      if (tabela === "transportadoras" && String(d.cnpj || "").replace(/\D/g, "").length !== 14) {
+        cadStatus("CNPJ da transportadora precisa ter 14 dígitos."); return;
       }
       salvarCadastro(d, false);
     });

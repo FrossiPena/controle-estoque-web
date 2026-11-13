@@ -98,7 +98,8 @@ const servidor = http.createServer((req, res) => {
       r.status = "confirmado"; r.justificativa = p.justificativa;
       return { faltas };
     },
-    cad_listar: (p) => p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
+    cad_listar: (p) => p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, colunas: ["id", "nome", "cnpj", "ativo"], linhas: [] })
+      : p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
       colunas: ["id", "tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade", "uf", "cep", "obs", "ativo"],
       linhas: [{ id: 7, tipo: "empresa", nome: "Construtora X", cnpj: "11222333000181", ativo: true },
                { id: 8, tipo: "obra", pai_id: 7, nome: "Obra Sul", cidade: "Betim", uf: "MG", ativo: true }] }) : ({ colunas: ["codigo", "codigo_exibicao", "descricao", "peso_kg", "pendencias"], podeEditar: true, total: 1,
@@ -298,6 +299,18 @@ const servidor = http.createServer((req, res) => {
     await page.waitForFunction(() => /desativado/.test(document.getElementById("cad-status").textContent));
     assert.deepStrictEqual(S.cad[S.cad.length - 1].excluir, { modo: "cad_excluir", tabela: "clientes", chave: 7 });
     console.log("ok - Clientes: CNPJ vermelho/máscara/BrasilAPI, obras do cliente, + Cadastrar obra, obra ↔ cliente, excluir");
+
+    // Transportadora: Buscar CNPJ preenche o nome
+    await page.selectOption("#cad-tabela", "transportadoras");
+    await page.waitForFunction(() => /0 registro/.test(document.getElementById("cad-total").textContent));
+    await page.click("#cad-btn-novo");
+    assert.ok(await page.$eval("#cad-f-cnpj", e => e.classList.contains("campo-invalido")));
+    await page.fill("#cad-f-cnpj", "11222333000181");
+    await page.click("#cad-btn-cnpj");
+    await page.waitForFunction(() => /CNPJ encontrado/.test(document.getElementById("cad-status").textContent));
+    assert.strictEqual(await page.inputValue("#cad-f-cnpj"), "11.222.333/0001-81");
+    assert.strictEqual(await page.inputValue("#cad-f-nome"), "CONSTRUTORA X S/A");
+    console.log("ok - Transportadora: Buscar CNPJ com máscara e nome da Receita");
 
     // F) Usuário sem papel e usuário consulta
     S.papeis = [];
