@@ -1,4 +1,4 @@
-/* style_v5.23.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.0.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -493,3 +493,5 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .cad-pendente{ border-left: 5px solid #e0a100; }
 .env-aviso{ color: #8a5a00; font-size: 12px; margin: 4px 0 0; }
 .env-perigo{ background: #b3261e; color: #fff; }
+.campo-invalido{ border: 2px solid #b3261e !important; background: #fdecea !important; }
+.cad-obras{ margin-top: 12px; border-top: 1px solid #ddd; padding-top: 8px; }

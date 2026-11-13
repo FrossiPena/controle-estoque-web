@@ -1,3 +1,5 @@
+// v6.0.0 - Envio de grua completo (Supabase). Clientes: CNPJ vermelho até ter 14 dígitos e com máscara antes da busca; "+ Cadastrar obra" já ligada ao
+//          cliente, lista das obras do cliente, obra pode ter CNPJ (SPE), trocar cliente ↔ obra; envio: obra = o cliente
 // v5.23.0 - Cadastros: cliente pelo CNPJ (BrasilAPI preenche razão social e endereço), obra como sub-cadastro da
 //          construtora, botão Excluir (desativa se já usado); motorista guarda as últimas placas e o romaneio as sugere
 // v5.22.1 - Envio de grua: base sem regra de torre aparece marcada e a altura vazia explica o que falta
@@ -49,7 +51,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.23.0";
+const APP_VERSION = "v6.0.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -3114,7 +3116,7 @@ async function confirmarRomaneio() {
 }
 
 /* ---------- Cadastros ---------- */
-const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false, empresas: [] };
+const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false, empresas: [], todosClientes: [] };
 const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito)", descricao: "Descrição", peso_kg: "Peso (kg)",
   comp_m: "Comprimento (m)", larg_m: "Largura (m)", alt_m: "Altura (m)", preco_padrao: "Preço padrão", valor_unitario: "Valor unitário (NF)",
   sapiens_produto: "Sapiens produto", sapiens_derivacao: "Sapiens derivação", veiculo_exigido: "Veículo exigido",
@@ -3146,8 +3148,15 @@ async function carregarCadastro() {
   const j = await romPost("cad_listar", { tabela, busca: envEl("cad-busca").value });
   lista.replaceChildren();
   if (!j.ok) { lista.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); envEl("cad-total").textContent = ""; return; }
+  // Clientes: a lista completa (sem a busca) dá o cliente de cada obra e as obras de cada cliente
+  let todos = j.linhas;
+  if (tabela === "clientes" && envEl("cad-busca").value) {
+    const k = await romPost("cad_listar", { tabela, busca: "" });
+    if (k.ok) todos = k.linhas;
+  }
   Object.assign(CAD, { colunas: j.colunas, linhas: j.linhas, podeEditar: j.podeEditar, tabela,
-    empresas: tabela === "clientes" ? j.linhas.filter(l => l.tipo !== "obra").sort((a, b) => a.nome.localeCompare(b.nome)) : [] });
+    todosClientes: tabela === "clientes" ? todos : [],
+    empresas: tabela === "clientes" ? todos.filter(l => l.tipo !== "obra").sort((a, b) => a.nome.localeCompare(b.nome)) : [] });
   envEl("cad-btn-novo").hidden = !j.podeEditar;
   envEl("cad-total").textContent = `${j.total} registro(s)` + (j.total > j.linhas.length ? ` (mostrando ${j.linhas.length}; use a busca)` : "");
   j.linhas.forEach(l => {
@@ -3156,6 +3165,9 @@ async function carregarCadastro() {
     const chave = j.colunas[0];
     const titulo = tabela === "pecas" ? `${l.codigo_exibicao} · ${l.descricao || ""}`
                  : tabela === "usuario_papeis" ? `${l.usuario} · ${l.papel}`
+                 : tabela === "clientes" ? (l.tipo === "obra"
+                     ? `Obra ${l.nome} · de ${(CAD.todosClientes.find(c => String(c.id) === String(l.pai_id)) || {}).nome || "cliente não encontrado"}`
+                     : `${l.nome}${l.cnpj ? " · " + fmtCnpj(l.cnpj) : ""}`)
                  : `${l[chave]}${l.nome && chave !== "nome" ? " · " + l.nome : ""}`;
     card.appendChild(eqEl("div", "eq-item-titulo", titulo));
     const resumo = j.colunas.slice(1).filter(k => l[k] != null && l[k] !== "" && !["descricao", "nome", "pendencias", "codigo_exibicao"].includes(k))
@@ -3167,10 +3179,13 @@ async function carregarCadastro() {
   });
 }
 
-function editarCadastro(linha) {
+// padrao: valores iniciais de um registro novo (ex.: obra já ligada ao cliente: { tipo: "obra", pai_id })
+function editarCadastro(linha, padrao) {
   const f = envEl("cad-form"); f.replaceChildren(); f.hidden = false;
   const novo = !linha, tabela = CAD.tabela;
-  f.appendChild(eqEl("h3", "", novo ? "Novo registro" : "Editar"));
+  if (novo && padrao) linha = null;
+  const ini = k => (linha ? linha[k] : padrao?.[k]);
+  f.appendChild(eqEl("h3", "", novo ? (padrao?.tipo === "obra" ? "Nova obra" : "Novo registro") : "Editar"));
   if (tabela === "usuario_papeis") {
     const u = document.createElement("input"); u.id = "cad-f-usuario"; u.value = linha?.usuario || ""; u.placeholder = "usuário (e-mail antes do @)";
     const p = document.createElement("select"); p.id = "cad-f-papel"; PAPEIS.forEach(x => envOpcao(p, x)); if (linha) p.value = linha.papel;
@@ -3191,13 +3206,14 @@ function editarCadastro(linha) {
     if (CAD_BOOL.has(k)) { inp = document.createElement("select"); envOpcao(inp, "false", "Não"); envOpcao(inp, "true", "Sim"); inp.value = String(!!linha?.[k]); }
     else if (k === "veiculo_exigido") { inp = document.createElement("select"); envOpcao(inp, "", "Nenhum"); (ENV.opcoes?.frota || []).forEach(v => envOpcao(inp, v.nome)); inp.value = linha?.[k] || ""; }
     else if (k === "pendencias" || k === "obs") { inp = document.createElement("textarea"); inp.rows = 3; inp.value = linha?.[k] ?? ""; }
-    else if (k === "tipo" && tabela === "clientes") { inp = document.createElement("select"); envOpcao(inp, "empresa", "Empresa (CNPJ)"); envOpcao(inp, "obra", "Obra de uma empresa"); inp.value = linha?.tipo || "empresa"; }
+    else if (k === "tipo" && tabela === "clientes") { inp = document.createElement("select"); envOpcao(inp, "empresa", "Cliente (escritório/empresa)"); envOpcao(inp, "obra", "Obra de um cliente"); inp.value = ini("tipo") || "empresa"; }
     else if (k === "pai_id") {
       inp = document.createElement("select"); envOpcao(inp, "", "—");
-      CAD.empresas.forEach(e => envOpcao(inp, e.id, `${e.nome}${e.cnpj ? " · " + fmtCnpj(e.cnpj) : ""}`));
-      inp.value = linha?.pai_id ? String(linha.pai_id) : "";
+      CAD.empresas.filter(e => !linha || e.id !== linha.id).forEach(e => envOpcao(inp, e.id, `${e.nome}${e.cnpj ? " · " + fmtCnpj(e.cnpj) : ""}`));
+      inp.value = ini("pai_id") ? String(ini("pai_id")) : "";
     }
-    else { inp = document.createElement("input"); inp.value = linha?.[k] ?? ""; }
+    else if (k === "cnpj") { inp = document.createElement("input"); inp.inputMode = "numeric"; inp.value = linha?.cnpj ? fmtCnpj(linha.cnpj) : ""; }
+    else { inp = document.createElement("input"); inp.value = ini(k) ?? ""; }
     inp.id = "cad-f-" + k;
     inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
     campos[k] = inp;
@@ -3208,15 +3224,21 @@ function editarCadastro(linha) {
       f.appendChild(b);
     }
   });
+  const filhas = tabela === "clientes" && linha ? CAD.todosClientes.filter(c => c.tipo === "obra" && String(c.pai_id) === String(linha.id)) : [];
   if (tabela === "clientes") {
-    // Obra: mostra a empresa (pai) e esconde CNPJ/razão social; empresa: o contrário
+    // Obra: mostra o cliente (pai); o CNPJ é opcional (obra SPE tem o próprio). Cliente: CNPJ obrigatório.
+    const aviso = eqEl("p", "env-aviso"); aviso.id = "cad-tipo-aviso";
+    campos.tipo.after(aviso);
     const ajusta = () => {
       const obra = campos.tipo.value === "obra";
       campos.pai_id.hidden = !obra; campos.pai_id.previousSibling.hidden = !obra;
-      ["cnpj", "razao_social", "nome_fantasia"].forEach(k => { campos[k].hidden = obra; campos[k].previousSibling.hidden = obra; });
-      const bc = envEl("cad-btn-cnpj"); if (bc) bc.hidden = obra;
+      campos.cnpj.previousSibling.textContent = obra ? "CNPJ (opcional: obra SPE com CNPJ próprio)" : "CNPJ";
+      aviso.textContent = obra && filhas.length
+        ? `Este cliente tem ${filhas.length} obra(s). Se virar obra, elas continuam ligadas a ele: troque o cliente delas antes.` : "";
+      validarCnpjCampo(campos.cnpj, !obra);
     };
     campos.tipo.addEventListener("change", ajusta);
+    campos.cnpj.addEventListener("input", () => validarCnpjCampo(campos.cnpj, campos.tipo.value !== "obra"));
     ajusta();
   }
   if (CAD.podeEditar) {
@@ -3225,6 +3247,13 @@ function editarCadastro(linha) {
       const d = {};
       Object.entries(campos).forEach(([k, el]) => { if (k !== "id") d[k] = el.value; });
       if (!novo) d[chave] = linha[chave];
+      if (tabela === "clientes") {
+        if (d.tipo === "empresa") d.pai_id = "";          // virou cliente: sai da construtora
+        else if (!d.pai_id) { cadStatus("Escolha o cliente ao qual a obra pertence."); return; }
+        const n = String(d.cnpj || "").replace(/\D/g, "");
+        if (d.tipo === "empresa" && n.length !== 14) { cadStatus("CNPJ do cliente precisa ter 14 dígitos."); return; }
+        if (n && n.length !== 14) { cadStatus("CNPJ da obra incompleto (deixe vazio se ela não tiver)."); return; }
+      }
       salvarCadastro(d, false);
     });
     const ac = eqEl("div", "env-acoes"); ac.appendChild(b); f.appendChild(ac);
@@ -3234,7 +3263,33 @@ function editarCadastro(linha) {
       ac.appendChild(x);
     }
   }
+  // Cliente salvo: as obras dele e o botão para cadastrar uma nova já ligada a ele
+  if (tabela === "clientes" && linha && linha.tipo !== "obra") {
+    const sec = eqEl("div", "cad-obras"); sec.id = "cad-obras";
+    sec.appendChild(eqEl("h4", "", `Obras de ${linha.nome} (${filhas.length})`));
+    if (!filhas.length) sec.appendChild(eqEl("p", "secao-info", "Nenhuma obra cadastrada para este cliente."));
+    filhas.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(o => {
+      const c = eqEl("button", "env-card"); c.type = "button";
+      c.appendChild(eqEl("div", "eq-item-titulo", o.nome + (o.ativo === false ? " (inativa)" : "")));
+      const sub = [o.cnpj ? "CNPJ " + fmtCnpj(o.cnpj) : "", o.endereco_envio, [o.cidade, o.uf].filter(Boolean).join("/")].filter(Boolean).join(" · ");
+      if (sub) c.appendChild(eqEl("div", "env-sub", sub));
+      c.addEventListener("click", () => editarCadastro(o));
+      sec.appendChild(c);
+    });
+    if (CAD.podeEditar) {
+      const nb = eqEl("button", "", "+ Cadastrar obra"); nb.type = "button"; nb.id = "cad-btn-nova-obra";
+      nb.addEventListener("click", () => editarCadastro(null, { tipo: "obra", pai_id: linha.id, cidade: linha.cidade, uf: linha.uf }));
+      sec.appendChild(nb);
+    }
+    f.appendChild(sec);
+  }
   f.scrollIntoView({ behavior: "smooth" });
+}
+
+// CNPJ incompleto fica vermelho (obrigatório só para o cliente; obra pode ficar vazia)
+function validarCnpjCampo(el, obrigatorio) {
+  const n = el.value.replace(/\D/g, "").length;
+  el.classList.toggle("campo-invalido", n ? n !== 14 : obrigatorio);
 }
 
 const fmtCnpj = c => String(c || "").replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
@@ -3243,6 +3298,8 @@ const fmtCnpj = c => String(c || "").replace(/\D/g, "").replace(/^(\d{2})(\d{3})
 async function buscarCnpj(campos) {
   const cnpj = campos.cnpj.value.replace(/\D/g, "");
   if (cnpj.length !== 14) { cadStatus("CNPJ precisa ter 14 dígitos."); return; }
+  campos.cnpj.value = fmtCnpj(cnpj);   // já mostra 00.000.000/0000-00 antes de consultar
+  validarCnpjCampo(campos.cnpj, false);
   cadStatus("Consultando o CNPJ na Receita (BrasilAPI)…");
   try {
     const { resp, raw } = await netFetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, undefined, 20000);
@@ -3297,6 +3354,12 @@ window.addEventListener("DOMContentLoaded", () => {
     const c = envClientes().find(x => eqNorm(x.rotulo) === eqNorm(envEl("env-cliente").value));
     if (c && c.endereco_envio && !envEl("env-endereco").value) envEl("env-endereco").value = c.endereco_envio;
     if (c && c.tipo === "obra" && !envEl("env-obra").value) envEl("env-obra").value = c.nome;
+    if (envEl("env-obra-cliente").checked) envEl("env-obra").value = envEl("env-cliente").value;
+  });
+  envEl("env-obra-cliente")?.addEventListener("change", e => {
+    const obra = envEl("env-obra");
+    obra.disabled = e.target.checked;
+    if (e.target.checked) obra.value = envEl("env-cliente").value;
   });
   envEl("env-btn-previa")?.addEventListener("click", () => gerarPrevia(false));
   envEl("env-btn-redistribuir")?.addEventListener("click", () => gerarPrevia(true));

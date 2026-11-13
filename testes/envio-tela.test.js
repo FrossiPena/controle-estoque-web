@@ -100,7 +100,8 @@ const servidor = http.createServer((req, res) => {
     },
     cad_listar: (p) => p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
       colunas: ["id", "tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade", "uf", "cep", "obs", "ativo"],
-      linhas: [{ id: 7, tipo: "empresa", nome: "Construtora X", cnpj: "11222333000181", ativo: true }] }) : ({ colunas: ["codigo", "codigo_exibicao", "descricao", "peso_kg", "pendencias"], podeEditar: true, total: 1,
+      linhas: [{ id: 7, tipo: "empresa", nome: "Construtora X", cnpj: "11222333000181", ativo: true },
+               { id: 8, tipo: "obra", pai_id: 7, nome: "Obra Sul", cidade: "Betim", uf: "MG", ativo: true }] }) : ({ colunas: ["codigo", "codigo_exibicao", "descricao", "peso_kg", "pendencias"], podeEditar: true, total: 1,
       linhas: [{ codigo: "C051023611111", codigo_exibicao: "C051.023-611.111", descricao: "LANÇA 1 - PÉ", peso_kg: 3100, pendencias: "peso_kg diferente entre abas" }] }),
     cad_salvar: (p) => { S.cad.push(p); return {}; },
     cad_excluir: (p) => { S.cad.push({ excluir: p }); return { acao: "desativado (já usado em envio/cadastro)" }; },
@@ -152,6 +153,10 @@ const servidor = http.createServer((req, res) => {
     await page.fill("#env-cliente", "S11D");
     await page.dispatchEvent("#env-cliente", "change");
     assert.strictEqual(await page.inputValue("#env-endereco"), "Canaã dos Carajás - PA", "endereço do cadastro do cliente");
+    await page.check("#env-obra-cliente");
+    assert.strictEqual(await page.inputValue("#env-obra"), "S11D", "obra = o próprio cliente");
+    assert.ok(await page.isDisabled("#env-obra"));
+    await page.uncheck("#env-obra-cliente");
     await page.fill("#env-obra", "Mina");
     await page.selectOption("#env-gt", "GT-10");
     assert.strictEqual(await page.inputValue("#env-modelo"), M, "modelo vem do GT");
@@ -242,27 +247,57 @@ const servidor = http.createServer((req, res) => {
     await page.waitForFunction(() => /Construtora X/.test(document.getElementById("cad-lista").textContent));
     await page.click("#cad-btn-novo");
     assert.ok(await page.isHidden("#cad-f-pai_id"), "empresa não mostra o campo da construtora");
-    await page.fill("#cad-f-cnpj", "11.222.333/0001-81");
+    assert.ok(await page.$eval("#cad-f-cnpj", e => e.classList.contains("campo-invalido")), "CNPJ vazio do cliente fica vermelho");
+    await page.fill("#cad-f-cnpj", "1122233300");
+    assert.ok(await page.$eval("#cad-f-cnpj", e => e.classList.contains("campo-invalido")), "CNPJ incompleto fica vermelho");
+    await page.fill("#cad-f-cnpj", "11222333000181");
+    assert.ok(!(await page.$eval("#cad-f-cnpj", e => e.classList.contains("campo-invalido"))), "14 dígitos: sai do vermelho");
     await page.click("#cad-btn-cnpj");
+    assert.strictEqual(await page.inputValue("#cad-f-cnpj"), "11.222.333/0001-81", "máscara antes de consultar");
     await page.waitForFunction(() => /CNPJ encontrado/.test(document.getElementById("cad-status").textContent));
     assert.strictEqual(await page.inputValue("#cad-f-razao_social"), "CONSTRUTORA X S/A");
     assert.strictEqual(await page.inputValue("#cad-f-nome"), "CONSTRUTORA X S/A");
     assert.match(await page.inputValue("#cad-f-endereco_envio"), /AVENIDA BRASIL, 100, CENTRO/);
     assert.strictEqual(await page.inputValue("#cad-f-cidade"), "BELO HORIZONTE");
     await page.selectOption("#cad-f-tipo", "obra");
-    assert.ok(await page.isVisible("#cad-f-pai_id") && await page.isHidden("#cad-f-cnpj"), "obra mostra a construtora e esconde o CNPJ");
+    assert.ok(await page.isVisible("#cad-f-pai_id") && await page.isVisible("#cad-f-cnpj"), "obra mostra o cliente e o CNPJ (SPE)");
     await page.selectOption("#cad-f-pai_id", "7");
     await page.fill("#cad-f-nome", "Obra Mina Norte");
     await page.click("#cad-btn-salvar");
     await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
     const obra = S.cad[S.cad.length - 1];
     assert.strictEqual(obra.tabela, "clientes"); assert.strictEqual(obra.dados.tipo, "obra"); assert.strictEqual(obra.dados.pai_id, "7");
-    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 1);
-    await page.click("#cad-lista .env-card");
+    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 2);
+    assert.match(await page.locator("#cad-lista").innerText(), /Obra Obra Sul · de Construtora X/);
+    // Cliente: lista das obras e "+ Cadastrar obra" já ligada a ele
+    await page.click("#cad-lista .env-card >> nth=0");
+    assert.match(await page.locator("#cad-obras").innerText(), /Obras de Construtora X \(1\)[\s\S]*Obra Sul/);
+    await page.click("#cad-btn-nova-obra");
+    assert.strictEqual(await page.inputValue("#cad-f-tipo"), "obra");
+    assert.strictEqual(await page.inputValue("#cad-f-pai_id"), "7");
+    assert.ok(!(await page.$eval("#cad-f-cnpj", e => e.classList.contains("campo-invalido"))), "obra sem CNPJ não fica vermelha");
+    await page.fill("#cad-f-nome", "Obra SPE");
+    await page.fill("#cad-f-cnpj", "123");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /incompleto/.test(document.getElementById("cad-status").textContent));
+    await page.fill("#cad-f-cnpj", "");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
+    assert.strictEqual(S.cad[S.cad.length - 1].dados.pai_id, "7");
+    // Obra vira cliente: perde o vínculo
+    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 2);
+    await page.click("#cad-lista .env-card >> nth=1");
+    await page.selectOption("#cad-f-tipo", "empresa");
+    await page.fill("#cad-f-cnpj", "11222333000181");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
+    assert.strictEqual(S.cad[S.cad.length - 1].dados.tipo, "empresa"); assert.strictEqual(S.cad[S.cad.length - 1].dados.pai_id, "");
+    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 2);
+    await page.click("#cad-lista .env-card >> nth=0");
     await page.click("#cad-btn-excluir");
     await page.waitForFunction(() => /desativado/.test(document.getElementById("cad-status").textContent));
     assert.deepStrictEqual(S.cad[S.cad.length - 1].excluir, { modo: "cad_excluir", tabela: "clientes", chave: 7 });
-    console.log("ok - Clientes: CNPJ preenche razão social/endereço, obra com construtora, excluir (desativa se usado)");
+    console.log("ok - Clientes: CNPJ vermelho/máscara/BrasilAPI, obras do cliente, + Cadastrar obra, obra ↔ cliente, excluir");
 
     // F) Usuário sem papel e usuário consulta
     S.papeis = [];
