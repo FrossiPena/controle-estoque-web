@@ -1,13 +1,13 @@
-<!-- index.html - v6.1.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.1.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.1.0" />
+  <meta name="app-version" content="v6.1.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.1.0" />
+  <link rel="stylesheet" href="style.css?v=6.1.1" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -530,9 +530,13 @@
         <div class="env-acoes"><button type="button" id="env-btn-previa">Gerar romaneios</button></div>
 
         <div id="env-previa" hidden>
+          <div id="env-diverg" class="env-diverg" hidden>
+            <h3 id="env-diverg-titulo">Divergências de cadastro</h3>
+            <p class="secao-info">Dados que faltam ou não batem e afetam a distribuição. Toque na peça para corrigir o cadastro.</p>
+            <ul id="env-avisos" class="env-avisos"></ul>
+          </div>
           <h3>Peças do envio</h3>
           <p class="secao-info">Ajuste as quantidades se precisar e toque em Redistribuir.</p>
-          <ul id="env-avisos" class="env-avisos"></ul>
           <div id="env-itens"></div>
           <div class="env-acoes"><button type="button" id="env-btn-redistribuir">Redistribuir</button></div>
           <h3>Veículos</h3>
@@ -641,6 +645,7 @@
     <!-- 7) Cadastros (Supabase) -->
     <section class="frame" id="screen-cadastros" hidden>
       <h2>Cadastros</h2>
+      <button type="button" id="cad-voltar-envio" class="env-voltar" hidden>← Voltar ao novo envio</button>
       <p id="cad-status" class="secao-info"></p>
       <label class="campo-label" for="cad-tabela">Cadastro</label>
       <select id="cad-tabela">
@@ -696,7 +701,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.1.0"></script>
+  <script src="app.js?v=6.1.1"></script>
 </body>
 </html>
 

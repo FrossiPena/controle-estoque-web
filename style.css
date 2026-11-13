@@ -1,4 +1,4 @@
-/* style_v6.1.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.1.1.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -502,3 +502,6 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .cad-obras{ margin-top: 12px; border-top: 1px solid #ddd; padding-top: 8px; }
 .cad-sugestoes{ display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
 .cad-sugestao{ text-align: left; background: #eef3ff; color: #0c447c; border: 1px solid #b5d4f4; }
+.env-diverg{ border: 1px solid #efc56b; background: #fff8e6; border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+.env-diverg h3{ margin: 4px 0; color: #8a5a00; }
+.env-diverg-link{ color: #0c447c; font-weight: 700; }

@@ -1,3 +1,5 @@
+// v6.1.1 - Novo envio: avisos viram "Divergências de cadastro" com código + descrição; tocar abre o cadastro da
+//          peça e "← Voltar ao novo envio" mantém o formulário
 // v6.1.0 - Romaneio: planejado/iniciado/conferido/aguardando nota/concluído/sinistrado/excluído (pedir nota,
 //          concluir com NF, sinistro, reabrir); Excluir envio (só planejados ou geral com EXCLUIR).
 //          Novo envio: Obra = lista com o próprio cliente e as obras dele; "+ Adicionar obra" cadastra já ligada
@@ -56,7 +58,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.1.0";
+const APP_VERSION = "v6.1.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -151,7 +153,9 @@ function showScreen(key) {
   if (key === "inventario" && mudou && AUTH.user) carregarInvSel();
   if (key === "acessorios" && mudou && AUTH.user) carregarVigas();
   if (key === "cadacess" && mudou && AUTH.user) carregarCadAcess();
-  if (key === "envio" && mudou && AUTH.user) abrirEnvio();
+  // Voltando do cadastro de uma peça (divergência do novo envio): mantém o formulário como estava
+  if (key === "envio" && mudou && AUTH.user) { if (ENV.manterTela) ENV.manterTela = false; else abrirEnvio(); }
+  if (key !== "cadastros" && envEl("cad-voltar-envio")) envEl("cad-voltar-envio").hidden = true;
   if (key === "cadastros" && mudou && AUTH.user) abrirCadastros();
 }
 
@@ -2883,8 +2887,7 @@ async function gerarPrevia(redistribuir) {
 function renderPrevia() {
   const p = ENV.previa;
   envEl("env-previa").hidden = false;
-  const av = envEl("env-avisos"); av.replaceChildren();
-  [...(p.avisos || []), ...(p.avisosDistribuicao || [])].forEach(a => av.appendChild(eqEl("li", "", a)));
+  renderDivergencias(p);
   const it = envEl("env-itens"); it.replaceChildren();
   let grupo = null;
   p.itens.forEach((x, i) => {
@@ -2952,6 +2955,44 @@ async function envAdicionarObra() {
   envEl("env-nova-obra-nome").value = ""; envEl("env-nova-obra-endereco").value = "";
   envStatus(`Obra ${nome} cadastrada em ${cli.nome}.`);
   envPreencherObras(j.linha ? j.linha.id : null);
+}
+
+// Avisos da prévia ("C028.073-338.111: sem peso"): código + descrição; tocar abre o cadastro da peça
+function renderDivergencias(p) {
+  const av = envEl("env-avisos"); av.replaceChildren();
+  const avisos = [...(p.avisos || []), ...(p.avisosDistribuicao || [])];
+  envEl("env-diverg").hidden = !avisos.length;
+  envEl("env-diverg-titulo").textContent = `Divergências de cadastro (${avisos.length})`;
+  const porExib = new Map(p.itens.map(i => [String(i.codigoExib || i.codigo), i]));
+  const porChave = new Map(p.itens.map(i => [String(i.codigo), i]));
+  avisos.forEach(a => {
+    const li = document.createElement("li");
+    const m = String(a).match(/^(.+?): (.*)$/);
+    const it = m && (porExib.get(m[1]) || porChave.get(m[1]));
+    if (!it) { li.textContent = a; av.appendChild(li); return; }
+    // O texto também pode citar outra peça pela chave (ex.: "o pai C051001635111"): troca pela descrição se estiver na lista
+    const resto = m[2].replace(/\b(C\d{12})\b/g, k => porChave.get(k) ? `${porChave.get(k).codigoExib} (${porChave.get(k).descricao})` : k);
+    const link = document.createElement("a");
+    link.href = "#"; link.className = "env-diverg-link";
+    link.textContent = `${it.codigoExib || it.codigo} · ${it.descricao || "sem descrição"}`;
+    link.title = "Abrir o cadastro desta peça";
+    link.addEventListener("click", e => { e.preventDefault(); abrirCadastroPeca(it.codigo); });
+    li.append(link, document.createTextNode(": " + resto));
+    av.appendChild(li);
+  });
+}
+
+// Cadastros → Peças já na peça; "← Voltar ao novo envio" volta sem perder o formulário (refaça a prévia depois)
+async function abrirCadastroPeca(codigo) {
+  ENV.manterTela = false;
+  showScreen("cadastros");
+  envEl("cad-voltar-envio").hidden = false;
+  envEl("cad-tabela").value = "pecas";
+  envEl("cad-busca").value = codigo;
+  await carregarCadastro();
+  const l = CAD.linhas.find(x => x.codigo === codigo);
+  if (l) editarCadastro(l);
+  else cadStatus(`A peça ${codigo} não tem cadastro: use "+ Novo" para criar.`);
 }
 
 async function salvarEnvio() {
@@ -3114,9 +3155,9 @@ async function lerPecaEnvio(c9, id, opcoes) {
                                         manual: !!o.manual, mover: !!o.mover, confirmo: o.confirmo || "" });
   const botao = (texto, fn) => { const b = eqEl("button", "", texto); b.type = "button"; b.addEventListener("click", fn); acoes.appendChild(b); };
   if (j.ok) {
+    await recarregarRomaneio();   // lista atualizada antes do "OK" (quem lê a tela vê os dois juntos)
     msg.className = "env-msg-ok";
     msg.textContent = `OK: ${j.descricao || j.codigo}` + (j.fora ? " (fora do plano)" : "") + (j.movidoDe ? " (movida de outro romaneio)" : "");
-    await recarregarRomaneio();
     if (ENV.leitorAtivo) setTimeout(() => { if (ENV.leitorAtivo && ENV.view === "romaneio") iniciarLeitor("env-qr"); }, 900);
     return;
   }
@@ -3524,6 +3565,12 @@ window.addEventListener("DOMContentLoaded", () => {
       .forEach(([id, k]) => { if (m[k] && !envEl(id).value) envEl(id).value = m[k]; });
   });
   envEl("cad-tabela")?.addEventListener("change", carregarCadastro);
+  envEl("cad-voltar-envio")?.addEventListener("click", () => {
+    ENV.manterTela = true;
+    showScreen("envio");
+    envView("novo");
+    envStatus("De volta ao novo envio: toque em \"Gerar romaneios\" para usar o cadastro corrigido.");
+  });
   envEl("cad-btn-buscar")?.addEventListener("click", carregarCadastro);
   envEl("cad-busca")?.addEventListener("keydown", e => { if (e.key === "Enter") carregarCadastro(); });
   envEl("cad-btn-novo")?.addEventListener("click", () => editarCadastro(null));

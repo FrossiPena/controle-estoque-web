@@ -31,7 +31,7 @@ const servidor = http.createServer((req, res) => {
   const pecas = {
     C051023611111: { descricao: "LANÇA 1 - PÉ", peso_kg: 3100, comp_m: 12 },
     C051001621111: { descricao: "LANÇA 2", peso_kg: 2000, comp_m: 10 },
-    C028047332111: { descricao: "TORRE 4,14", peso_kg: 2300, comp_m: 4.14, codigo_exibicao: "C028.047-332.111" },
+    C028047332111: { descricao: "TORRE 4,14", peso_kg: null, comp_m: 4.14, codigo_exibicao: "C028.047-332.111" },
   };
   const frota = [{ nome: "Carreta 12 m", comp_util_m: 12, carga_max_kg: 27000, padrao: true }, { nome: "Prancha", comp_util_m: 10 }];
   // Peças físicas: código 9 + ID → Código C
@@ -110,7 +110,7 @@ const servidor = http.createServer((req, res) => {
       r.status = "conferido"; r.justificativa = p.justificativa;
       return { faltas };
     },
-    cad_listar: (p) => p.tabela === "motoristas" ? ({ podeEditar: true, total: 0, linhas: [],
+    cad_listar: (p) => (S.ultimaBusca = p.busca, false) ? null : p.tabela === "motoristas" ? ({ podeEditar: true, total: 0, linhas: [],
         colunas: ["id", "nome", "cpf", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"] })
       : p.tabela === "transportadoras" ? ({ podeEditar: true, total: 0, colunas: ["id", "nome", "cnpj", "ativo"], linhas: [] })
       : p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
@@ -190,6 +190,17 @@ const servidor = http.createServer((req, res) => {
     assert.match(await texto("#env-itens"), /LANÇA 2/);
     assert.match(await texto("#env-itens"), /TORRE 4,14/);
     assert.match(await texto("#env-veiculos"), /Carreta 12 m/);
+    // Divergência: código + descrição, link para o cadastro da peça e volta sem perder o formulário
+    assert.ok(await page.isVisible("#env-diverg"));
+    assert.match(await page.locator("#env-avisos").innerText(), /C028047332111 · TORRE 4,14: sem peso|C028.047-332.111 · TORRE 4,14: sem peso/);
+    await page.click("#env-avisos .env-diverg-link");
+    await page.waitForSelector("#screen-cadastros:not([hidden])");
+    assert.strictEqual(await page.inputValue("#cad-busca"), "C028047332111");
+    assert.strictEqual(S.ultimaBusca, "C028047332111");
+    await page.click("#cad-voltar-envio");
+    await page.waitForSelector("#env-novo:not([hidden])");
+    assert.strictEqual(await page.inputValue("#env-cliente"), "S11D", "formulário mantido");
+    assert.ok(await page.isVisible("#env-previa"));
     const nVeic = (await page.locator("#env-veiculos .eq-item").count());
     // Edita a quantidade da lança 2 para 1 e redistribui
     const idx = await page.evaluate(() => ENV.previa.itens.findIndex(i => i.codigo === "C051001621111"));
@@ -282,9 +293,9 @@ const servidor = http.createServer((req, res) => {
     console.log("ok - status: conferido → aguardando nota → concluído (NF); excluir envio só planejados / geral com EXCLUIR");
 
     // E) Cadastros
-    await page.evaluate(() => showScreen("cadastros"));
-    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 1);
-    assert.match(await texto("#cad-lista"), /peso_kg diferente/);
+    await page.evaluate(() => { document.getElementById("cad-lista").replaceChildren(); showScreen("cadastros"); });
+    await page.waitForFunction(() => /papéis/.test(document.getElementById("cad-status").textContent));
+    await page.waitForFunction(() => /peso_kg diferente/.test(document.getElementById("cad-lista").textContent));
     await page.click("#cad-lista .env-card");
     await page.fill("#cad-f-peso_kg", "3150");
     await page.click("#cad-btn-salvar");
