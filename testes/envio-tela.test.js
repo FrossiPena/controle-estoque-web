@@ -98,9 +98,12 @@ const servidor = http.createServer((req, res) => {
       r.status = "confirmado"; r.justificativa = p.justificativa;
       return { faltas };
     },
-    cad_listar: (p) => ({ colunas: ["codigo", "codigo_exibicao", "descricao", "peso_kg", "pendencias"], podeEditar: true, total: 1,
+    cad_listar: (p) => p.tabela === "clientes" ? ({ podeEditar: true, total: 1,
+      colunas: ["id", "tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade", "uf", "cep", "obs", "ativo"],
+      linhas: [{ id: 7, tipo: "empresa", nome: "Construtora X", cnpj: "11222333000181", ativo: true }] }) : ({ colunas: ["codigo", "codigo_exibicao", "descricao", "peso_kg", "pendencias"], podeEditar: true, total: 1,
       linhas: [{ codigo: "C051023611111", codigo_exibicao: "C051.023-611.111", descricao: "LANÇA 1 - PÉ", peso_kg: 3100, pendencias: "peso_kg diferente entre abas" }] }),
     cad_salvar: (p) => { S.cad.push(p); return {}; },
+    cad_excluir: (p) => { S.cad.push({ excluir: p }); return { acao: "desativado (já usado em envio/cadastro)" }; },
   };
 
   await new Promise(r => servidor.listen(0, r));
@@ -110,6 +113,10 @@ const servidor = http.createServer((req, res) => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
     await ctx.addInitScript(() => { if (!localStorage.getItem("ce_auth")) localStorage.setItem("ce_auth", JSON.stringify({ user: "real", pass: "x" })); });
     await ctx.route("https://unpkg.com/**", r => r.fulfill({ body: "", contentType: "text/javascript" }));
+    await ctx.route("https://brasilapi.com.br/**", r => r.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, contentType: "application/json",
+      body: JSON.stringify({ cnpj: "11222333000181", razao_social: "CONSTRUTORA X S/A", nome_fantasia: "", descricao_tipo_de_logradouro: "AVENIDA",
+        logradouro: "BRASIL", numero: "100", bairro: "CENTRO", municipio: "BELO HORIZONTE", uf: "MG", cep: "30000000",
+        descricao_situacao_cadastral: "ATIVA" }) }));
     await ctx.route("https://script.google.com/**", r => r.fulfill({ body: JSON.stringify({ ok: true, version: "mock", gts: [] }), contentType: "application/json" }));
     await ctx.route("https://*.supabase.co/**", r => {
       const req = r.request(), u = new URL(req.url());
@@ -229,6 +236,33 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(S.cad[0].tabela, "pecas"); assert.strictEqual(S.cad[0].dados.peso_kg, "3150");
     assert.strictEqual(S.cad[0].dados.codigo, "C051023611111");
     console.log("ok - Cadastros: lista com pendência, edita e salva a peça");
+
+    // Clientes: novo pelo CNPJ (BrasilAPI), obra com a construtora como pai, excluir
+    await page.selectOption("#cad-tabela", "clientes");
+    await page.waitForFunction(() => /Construtora X/.test(document.getElementById("cad-lista").textContent));
+    await page.click("#cad-btn-novo");
+    assert.ok(await page.isHidden("#cad-f-pai_id"), "empresa não mostra o campo da construtora");
+    await page.fill("#cad-f-cnpj", "11.222.333/0001-81");
+    await page.click("#cad-btn-cnpj");
+    await page.waitForFunction(() => /CNPJ encontrado/.test(document.getElementById("cad-status").textContent));
+    assert.strictEqual(await page.inputValue("#cad-f-razao_social"), "CONSTRUTORA X S/A");
+    assert.strictEqual(await page.inputValue("#cad-f-nome"), "CONSTRUTORA X S/A");
+    assert.match(await page.inputValue("#cad-f-endereco_envio"), /AVENIDA BRASIL, 100, CENTRO/);
+    assert.strictEqual(await page.inputValue("#cad-f-cidade"), "BELO HORIZONTE");
+    await page.selectOption("#cad-f-tipo", "obra");
+    assert.ok(await page.isVisible("#cad-f-pai_id") && await page.isHidden("#cad-f-cnpj"), "obra mostra a construtora e esconde o CNPJ");
+    await page.selectOption("#cad-f-pai_id", "7");
+    await page.fill("#cad-f-nome", "Obra Mina Norte");
+    await page.click("#cad-btn-salvar");
+    await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
+    const obra = S.cad[S.cad.length - 1];
+    assert.strictEqual(obra.tabela, "clientes"); assert.strictEqual(obra.dados.tipo, "obra"); assert.strictEqual(obra.dados.pai_id, "7");
+    await page.waitForFunction(() => document.querySelectorAll("#cad-lista .env-card").length === 1);
+    await page.click("#cad-lista .env-card");
+    await page.click("#cad-btn-excluir");
+    await page.waitForFunction(() => /desativado/.test(document.getElementById("cad-status").textContent));
+    assert.deepStrictEqual(S.cad[S.cad.length - 1].excluir, { modo: "cad_excluir", tabela: "clientes", chave: 7 });
+    console.log("ok - Clientes: CNPJ preenche razão social/endereço, obra com construtora, excluir (desativa se usado)");
 
     // F) Usuário sem papel e usuário consulta
     S.papeis = [];

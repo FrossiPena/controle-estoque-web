@@ -1,3 +1,4 @@
+// romaneio v1.1 - clientes com CNPJ e obras (pai_id), motorista guarda as últimas placas, cad_excluir
 // romaneio v1.0 - Envio de grua: configurador, romaneios por veículo, conferência por QR, fotos e cadastros.
 // Só no Supabase (sem Google). POST JSON { modo, ... } com Authorization: Bearer <token do Supabase Auth>;
 // GET ?modo=diag sem login. Permissão pelos papéis de estoque.usuario_papeis (usuário = e-mail antes do @):
@@ -7,7 +8,7 @@ import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import { montarLista, distribuirVeiculos, chaveCodigo } from "../_shared/configurador.mjs";
 
-const VERSION = "romaneio-v1.0";
+const VERSION = "romaneio-v1.1";
 const TZ = "America/Sao_Paulo";
 const BUCKET = "romaneios";
 const ORIGENS = [/^https:\/\/frossipena\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -149,15 +150,18 @@ const CADASTROS: Record<string, { chave: string; colunas: string[]; papel: strin
            papel: ["cadastro"], ordem: "codigo", busca: ["codigo", "codigo_exibicao", "descricao"] },
   veiculos: { chave: "nome", colunas: ["comp_util_m", "carga_max_kg", "padrao", "ordem", "ativo", "obs"], papel: ["cadastro"],
               ordem: "ordem", busca: ["nome"] },
-  clientes: { chave: "id", colunas: ["nome", "endereco_envio", "obs", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome"] },
+  clientes: { chave: "id", colunas: ["tipo", "pai_id", "cnpj", "razao_social", "nome_fantasia", "nome", "endereco_envio", "cidade",
+              "uf", "cep", "obs", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cnpj", "razao_social", "nome_fantasia"] },
   transportadoras: { chave: "id", colunas: ["nome", "cnpj", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cnpj"] },
-  motoristas: { chave: "id", colunas: ["nome", "cpf", "transportadora_id", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cpf"] },
+  motoristas: { chave: "id", colunas: ["nome", "cpf", "transportadora_id", "placa_cavalo", "placa_carreta1", "placa_carreta2", "ativo"], papel: ["cadastro", "expedicao"], ordem: "nome", busca: ["nome", "cpf"] },
   placas: { chave: "placa", colunas: ["tipo", "transportadora_id", "ativo"], papel: ["cadastro", "expedicao"], ordem: "placa", busca: ["placa"] },
   usuario_papeis: { chave: "usuario", colunas: ["papel"], papel: ["admin"], ordem: "usuario", busca: ["usuario"] },
 };
-const COLS_NUM = new Set(["peso_kg", "comp_m", "larg_m", "alt_m", "preco_padrao", "valor_unitario", "comp_util_m", "carga_max_kg", "ordem", "transportadora_id"]);
+const COLS_NUM = new Set(["peso_kg", "comp_m", "larg_m", "alt_m", "preco_padrao", "valor_unitario", "comp_util_m", "carga_max_kg", "ordem", "transportadora_id", "pai_id"]);
 const COLS_BOOL = new Set(["vai_embaixo", "padrao", "ativo"]);
 function valorCampo(col: string, v: unknown) {
+  if (col === "cnpj" || col === "cpf") return txt(v).replace(/\D/g, "") || null;
+  if (col.startsWith("placa")) return txt(v).toUpperCase().replace(/[^0-9A-Z]/g, "") || null;
   if (COLS_NUM.has(col)) return txt(v) === "" ? null : num(v);
   if (COLS_BOOL.has(col)) return v === true || ["true", "sim", "1"].includes(txt(v).toLowerCase());
   return txt(v) === "" ? null : txt(v);
@@ -167,8 +171,9 @@ function valorCampo(col: string, v: unknown) {
 type Modo = (tx: Tx, p: Record<string, unknown>, c: Ctx) => Promise<Record<string, unknown>>;
 const MODOS: Record<string, Modo> = {
   async opcoes(tx) {
-    const modelos = await tx`select m.nome, a.lancas from estoque.modelos m left join estoque.relacao_abas a
-                             on lower(a.aba) = lower(m.nome) order by m.nome`;
+    // Modelos das regras e das abas da RELAÇÃO (um modelo só na RELAÇÃO também aparece, com as lanças)
+    const modelos = await tx`select coalesce(a.aba, m.nome) as nome, a.lancas from estoque.modelos m
+                             full join estoque.relacao_abas a on lower(a.aba) = lower(m.nome) order by 1`;
     const gts = await tx`select gt, modelo from estoque.validacao where gt <> '' order by gt`;
     const torres = await tx`select distinct modelo, base, telescopagem, altura_m from estoque.config_regras
                             where componente = 'torre' and altura_m is not null order by altura_m`;
@@ -179,9 +184,10 @@ const MODOS: Record<string, Modo> = {
       modelos, gts, bases, frota: await frota(tx),
       torres: torres.map(t => ({ ...t, altura_m: Number(t.altura_m) })),
       lastros: lastros.map(l => ({ ...l, lastro_t: Number(l.lastro_t) })),
-      clientes: await tx`select id, nome, endereco_envio from estoque.clientes where ativo order by nome`,
+      clientes: await tx`select id, tipo, pai_id, nome, cnpj, endereco_envio, cidade, uf from estoque.clientes where ativo order by nome`,
       transportadoras: await tx`select id, nome from estoque.transportadoras where ativo order by nome`,
-      motoristas: await tx`select id, nome, cpf, transportadora_id from estoque.motoristas where ativo order by nome`,
+      motoristas: await tx`select id, nome, cpf, transportadora_id, placa_cavalo, placa_carreta1, placa_carreta2
+                           from estoque.motoristas where ativo order by nome`,
       placas: await tx`select placa, tipo from estoque.placas where ativo order by placa`,
     };
   },
@@ -210,7 +216,8 @@ const MODOS: Record<string, Modo> = {
     if (!cliente) throw new Recusa("informe o cliente");
     const veiculos = p.veiculos as Array<Record<string, unknown>>;
     if (!Array.isArray(veiculos) || !veiculos.length) throw new Recusa("gere a prévia antes de salvar");
-    const [cli] = await tx`select id from estoque.clientes where lower(nome) = lower(${cliente})`;
+    const [cli] = p.cliente_id ? await tx`select id from estoque.clientes where id = ${int(p.cliente_id)}`
+                               : await tx`select id from estoque.clientes where lower(nome) = lower(${cliente}) limit 1`;
     const [e] = await tx`insert into estoque.envios ${tx({
       cliente_id: cli?.id ?? null, cliente, endereco_envio: txt(p.endereco_envio) || null, obra: txt(p.obra) || null,
       gt: cfg.gt, modelo: cfg.modelo, lanca_m: cfg.lanca_m, altura_m: cfg.altura_m, base: cfg.base,
@@ -392,6 +399,16 @@ const MODOS: Record<string, Modo> = {
     if (!Object.keys(d).length) return {};
     await tx`update estoque.romaneios set ${tx(d)} where id = ${r.id}`;
     await log(tx, c, "dados do romaneio", r.envio_id, r.id, d);
+    // Motorista: cadastro reaproveitado com as últimas placas (a ligação do dia fica no romaneio)
+    const nome = txt(d.motorista ?? r.motorista);
+    if (nome) {
+      const pl = { placa_cavalo: d.placa_cavalo ?? r.placa_cavalo ?? null, placa_carreta1: d.placa_carreta1 ?? r.placa_carreta1 ?? null,
+                   placa_carreta2: d.placa_carreta2 ?? r.placa_carreta2 ?? null };
+      const cpf = txt(d.cpf_motorista ?? r.cpf_motorista).replace(/\D/g, "") || null;
+      const [m] = await tx`select id, cpf from estoque.motoristas where lower(nome) = lower(${nome}) limit 1`;
+      if (m) await tx`update estoque.motoristas set ${tx({ ...pl, cpf: cpf || m.cpf })} where id = ${m.id}`;
+      else await tx`insert into estoque.motoristas ${tx({ nome, cpf, ...pl })}`;
+    }
     return {};
   },
 
@@ -471,6 +488,30 @@ const MODOS: Record<string, Modo> = {
              podeEditar: pode(c, ...def.papel) };
   },
 
+  // Exclui de verdade se ninguém usa; se já é usado (envio, romaneio, motorista…), só desativa
+  async cad_excluir(tx, p, c) {
+    const tabela = txt(p.tabela), def = CADASTROS[tabela];
+    if (!def || tabela === "usuario_papeis") throw new Recusa("cadastro inválido");
+    exigir(c, ...def.papel);
+    const chave = txt(p.chave);
+    if (!chave) throw new Recusa("informe o registro");
+    const ident = tx("estoque." + tabela);
+    const [antes] = await tx`select * from ${ident} where ${tx(def.chave)} = ${chave}`;
+    if (!antes) throw new Recusa("registro não encontrado");
+    let acao = "excluído";
+    try {
+      await tx.savepoint(sp => sp`delete from ${ident} where ${tx(def.chave)} = ${chave}`);
+    } catch (e) {
+      if ((e as { code?: string }).code !== "23503") throw e;
+      if (!("ativo" in antes)) throw new Recusa("em uso (envio/regra/romaneio): não dá para excluir");
+      await tx`update ${ident} set ativo = false where ${tx(def.chave)} = ${chave}`;
+      acao = "desativado (já usado em envio/cadastro)";
+    }
+    await tx`insert into estoque.cadastro_log (usuario, tabela, chave, antes, depois)
+             values (${c.usuario}, ${tabela}, ${chave}, ${tx.json(antes)}, ${tx.json({ acao })})`;
+    return { acao };
+  },
+
   async cad_salvar(tx, p, c) {
     const tabela = txt(p.tabela), def = CADASTROS[tabela];
     if (!def) throw new Recusa("cadastro inválido");
@@ -510,7 +551,7 @@ const MODOS: Record<string, Modo> = {
   },
 };
 
-const MODOS_GRAVACAO = ["salvar_envio", "ler_peca", "desfazer_leitura", "mover_item", "editar_romaneio", "novo_romaneio",
+const MODOS_GRAVACAO = ["cad_excluir", "salvar_envio", "ler_peca", "desfazer_leitura", "mover_item", "editar_romaneio", "novo_romaneio",
                         "foto_upload", "foto_registrar", "confirmar", "reabrir", "cad_salvar"];
 
 Deno.serve(async (req) => {

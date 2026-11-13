@@ -1,13 +1,13 @@
-<!-- index.html - v5.22.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v5.23.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v5.22.1" />
+  <meta name="app-version" content="v5.23.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=5.22.1" />
+  <link rel="stylesheet" href="style.css?v=5.23.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -617,10 +617,9 @@
       <select id="cad-tabela">
         <option value="pecas">Peças (por Código C)</option>
         <option value="veiculos">Veículos</option>
-        <option value="clientes">Clientes</option>
+        <option value="clientes">Clientes e obras</option>
         <option value="transportadoras">Transportadoras</option>
-        <option value="motoristas">Motoristas</option>
-        <option value="placas">Placas</option>
+        <option value="motoristas">Motoristas (e últimas placas)</option>
         <option value="usuario_papeis">Usuários e papéis</option>
       </select>
       <div class="env-acoes">
@@ -668,7 +667,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5.22.1"></script>
+  <script src="app.js?v=5.23.0"></script>
 </body>
 </html>
 

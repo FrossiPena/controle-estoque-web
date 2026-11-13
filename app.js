@@ -1,3 +1,5 @@
+// v5.23.0 - Cadastros: cliente pelo CNPJ (BrasilAPI preenche razão social e endereço), obra como sub-cadastro da
+//          construtora, botão Excluir (desativa se já usado); motorista guarda as últimas placas e o romaneio as sugere
 // v5.22.1 - Envio de grua: base sem regra de torre aparece marcada e a altura vazia explica o que falta
 // v5.22.0 - Telas 6) Envio de grua (envios por cliente – GT, configurador → romaneios por veículo, conferência por
 //          QR/digitada, mover peça, fotos, dados da carreta, confirmar) e 7) Cadastros (peças por Código C, veículos,
@@ -47,7 +49,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v5.22.1";
+const APP_VERSION = "v5.23.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2789,7 +2791,7 @@ function novoEnvio() {
   ENV.previa = null;
   envEl("env-previa").hidden = true;
   const dl = envEl("env-clientes"); dl.replaceChildren();
-  op.clientes.forEach(c => envOpcao(dl, c.nome));
+  envClientes().forEach(c => envOpcao(dl, c.rotulo));
   const gt = envEl("env-gt"); gt.replaceChildren();
   envOpcao(gt, "", op.gts.length ? "Selecione o GT…" : "Sem GTs (carga da Validação)");
   op.gts.forEach(g => envOpcao(gt, g.gt, `${g.gt} · ${g.modelo || ""}`));
@@ -2890,13 +2892,21 @@ function renderPrevia() {
   });
 }
 
+// Clientes do envio: obra aparece como "Obra (Construtora)"; a empresa sozinha também pode ser escolhida
+function envClientes() {
+  const cl = ENV.opcoes?.clientes || [];
+  const porId = Object.fromEntries(cl.map(c => [c.id, c]));
+  return cl.map(c => ({ ...c, rotulo: c.tipo === "obra" && porId[c.pai_id] ? `${c.nome} (${porId[c.pai_id].nome})` : c.nome }));
+}
+
 async function salvarEnvio() {
   if (!ENV.previa) return;
   const cliente = envEl("env-cliente").value.trim();
   if (!cliente) { envStatus("Informe o cliente."); return; }
   const btn = envEl("env-btn-salvar"); btn.disabled = true;
   envStatus("Salvando o envio…");
-  const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, endereco_envio: envEl("env-endereco").value,
+  const cli = envClientes().find(c => eqNorm(c.rotulo) === eqNorm(cliente));
+  const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, cliente_id: cli ? cli.id : null, endereco_envio: envEl("env-endereco").value,
                                             obra: envEl("env-obra").value, veiculos: ENV.previa.veiculos });
   btn.disabled = false;
   if (!j.ok) { envStatus("Não salvo: " + j.error); return; }
@@ -3104,14 +3114,16 @@ async function confirmarRomaneio() {
 }
 
 /* ---------- Cadastros ---------- */
-const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false };
+const CAD = { tabela: "", colunas: [], linhas: [], podeEditar: false, empresas: [] };
 const CAD_ROTULOS = { codigo: "Código", codigo_exibicao: "Código (como escrito)", descricao: "Descrição", peso_kg: "Peso (kg)",
   comp_m: "Comprimento (m)", larg_m: "Largura (m)", alt_m: "Altura (m)", preco_padrao: "Preço padrão", valor_unitario: "Valor unitário (NF)",
   sapiens_produto: "Sapiens produto", sapiens_derivacao: "Sapiens derivação", veiculo_exigido: "Veículo exigido",
   vai_embaixo: "Vai embaixo (forro)", obs: "Observação", pendencias: "Pendências de cadastro", nome: "Nome",
   comp_util_m: "Comprimento útil (m)", carga_max_kg: "Carga máxima (kg)", padrao: "Veículo padrão", ordem: "Ordem", ativo: "Ativo",
   endereco_envio: "Endereço de envio", cnpj: "CNPJ", cpf: "CPF", transportadora_id: "Transportadora (id)", placa: "Placa",
-  tipo: "Tipo (cavalo/carreta)", usuario: "Usuário", papel: "Papel", id: "Id" };
+  tipo: "Tipo", pai_id: "Empresa (construtora)", razao_social: "Razão social", nome_fantasia: "Nome fantasia",
+  cidade: "Cidade", uf: "UF", cep: "CEP", placa_cavalo: "Última placa do cavalo", placa_carreta1: "Última placa da carreta 1",
+  placa_carreta2: "Última placa da carreta 2", usuario: "Usuário", papel: "Papel", id: "Id" };
 const CAD_BOOL = new Set(["vai_embaixo", "padrao", "ativo"]);
 const PAPEIS = ["admin", "cadastro", "expedicao", "operacional", "consulta"];
 
@@ -3134,7 +3146,8 @@ async function carregarCadastro() {
   const j = await romPost("cad_listar", { tabela, busca: envEl("cad-busca").value });
   lista.replaceChildren();
   if (!j.ok) { lista.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); envEl("cad-total").textContent = ""; return; }
-  Object.assign(CAD, { colunas: j.colunas, linhas: j.linhas, podeEditar: j.podeEditar, tabela });
+  Object.assign(CAD, { colunas: j.colunas, linhas: j.linhas, podeEditar: j.podeEditar, tabela,
+    empresas: tabela === "clientes" ? j.linhas.filter(l => l.tipo !== "obra").sort((a, b) => a.nome.localeCompare(b.nome)) : [] });
   envEl("cad-btn-novo").hidden = !j.podeEditar;
   envEl("cad-total").textContent = `${j.total} registro(s)` + (j.total > j.linhas.length ? ` (mostrando ${j.linhas.length}; use a busca)` : "");
   j.linhas.forEach(l => {
@@ -3178,12 +3191,34 @@ function editarCadastro(linha) {
     if (CAD_BOOL.has(k)) { inp = document.createElement("select"); envOpcao(inp, "false", "Não"); envOpcao(inp, "true", "Sim"); inp.value = String(!!linha?.[k]); }
     else if (k === "veiculo_exigido") { inp = document.createElement("select"); envOpcao(inp, "", "Nenhum"); (ENV.opcoes?.frota || []).forEach(v => envOpcao(inp, v.nome)); inp.value = linha?.[k] || ""; }
     else if (k === "pendencias" || k === "obs") { inp = document.createElement("textarea"); inp.rows = 3; inp.value = linha?.[k] ?? ""; }
+    else if (k === "tipo" && tabela === "clientes") { inp = document.createElement("select"); envOpcao(inp, "empresa", "Empresa (CNPJ)"); envOpcao(inp, "obra", "Obra de uma empresa"); inp.value = linha?.tipo || "empresa"; }
+    else if (k === "pai_id") {
+      inp = document.createElement("select"); envOpcao(inp, "", "—");
+      CAD.empresas.forEach(e => envOpcao(inp, e.id, `${e.nome}${e.cnpj ? " · " + fmtCnpj(e.cnpj) : ""}`));
+      inp.value = linha?.pai_id ? String(linha.pai_id) : "";
+    }
     else { inp = document.createElement("input"); inp.value = linha?.[k] ?? ""; }
     inp.id = "cad-f-" + k;
     inp.disabled = !CAD.podeEditar || k === "id" || (k === chave && !novo);
     campos[k] = inp;
     f.append(eqEl("label", "campo-label", CAD_ROTULOS[k] || k), inp);
+    if (k === "cnpj" && tabela === "clientes" && CAD.podeEditar) {
+      const b = eqEl("button", "", "Buscar CNPJ"); b.type = "button"; b.id = "cad-btn-cnpj";
+      b.addEventListener("click", () => buscarCnpj(campos));
+      f.appendChild(b);
+    }
   });
+  if (tabela === "clientes") {
+    // Obra: mostra a empresa (pai) e esconde CNPJ/razão social; empresa: o contrário
+    const ajusta = () => {
+      const obra = campos.tipo.value === "obra";
+      campos.pai_id.hidden = !obra; campos.pai_id.previousSibling.hidden = !obra;
+      ["cnpj", "razao_social", "nome_fantasia"].forEach(k => { campos[k].hidden = obra; campos[k].previousSibling.hidden = obra; });
+      const bc = envEl("cad-btn-cnpj"); if (bc) bc.hidden = obra;
+    };
+    campos.tipo.addEventListener("change", ajusta);
+    ajusta();
+  }
   if (CAD.podeEditar) {
     const b = eqEl("button", "", "Salvar"); b.type = "button"; b.id = "cad-btn-salvar";
     b.addEventListener("click", () => {
@@ -3193,15 +3228,54 @@ function editarCadastro(linha) {
       salvarCadastro(d, false);
     });
     const ac = eqEl("div", "env-acoes"); ac.appendChild(b); f.appendChild(ac);
+    if (!novo) {
+      const x = eqEl("button", "env-perigo", "Excluir"); x.type = "button"; x.id = "cad-btn-excluir";
+      x.addEventListener("click", () => excluirCadastro(linha[chave]));
+      ac.appendChild(x);
+    }
   }
   f.scrollIntoView({ behavior: "smooth" });
+}
+
+const fmtCnpj = c => String(c || "").replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+
+// Dados públicos da Receita pela BrasilAPI (sem chave). Preenche só o que vier.
+async function buscarCnpj(campos) {
+  const cnpj = campos.cnpj.value.replace(/\D/g, "");
+  if (cnpj.length !== 14) { cadStatus("CNPJ precisa ter 14 dígitos."); return; }
+  cadStatus("Consultando o CNPJ na Receita (BrasilAPI)…");
+  try {
+    const { resp, raw } = await netFetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, undefined, 20000);
+    const j = JSON.parse(raw);
+    if (!resp.ok) throw new Error(j.message || `HTTP ${resp.status}`);
+    const end = [[j.descricao_tipo_de_logradouro, j.logradouro].filter(Boolean).join(" "), j.numero, j.complemento, j.bairro]
+      .filter(x => x && String(x).trim()).join(", ");
+    const set = (k, v) => { if (campos[k] && v) campos[k].value = v; };
+    set("cnpj", fmtCnpj(cnpj));
+    set("razao_social", j.razao_social);
+    set("nome_fantasia", j.nome_fantasia);
+    if (campos.nome && !campos.nome.value) set("nome", j.nome_fantasia || j.razao_social);
+    set("endereco_envio", end);
+    set("cidade", j.municipio); set("uf", j.uf); set("cep", j.cep);
+    cadStatus(`CNPJ encontrado: ${j.razao_social || ""}${j.descricao_situacao_cadastral ? " · situação " + j.descricao_situacao_cadastral : ""}. Confira e salve.`);
+  } catch (e) {
+    cadStatus("CNPJ não encontrado: " + (e.message || e));
+  }
+}
+
+async function excluirCadastro(chave) {
+  if (!confirm("Excluir este registro? Se ele já foi usado em algum envio, ele só fica desativado.")) return;
+  cadStatus("Excluindo…");
+  const j = await romPost("cad_excluir", { tabela: CAD.tabela, chave });
+  cadStatus(j.ok ? `Registro ${j.acao}.` : "Não excluído: " + j.error);
+  if (j.ok) { carregarCadastro(); ENV.opcoes = null; }
 }
 
 async function salvarCadastro(dados, excluir) {
   cadStatus("Salvando…");
   const j = await romPost("cad_salvar", { tabela: CAD.tabela, dados, excluir });
   cadStatus(j.ok ? "Salvo." : "Não salvo: " + j.error);
-  if (j.ok) carregarCadastro();
+  if (j.ok) { carregarCadastro(); ENV.opcoes = null; }   // listas do envio recarregam na próxima vez
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -3220,8 +3294,9 @@ window.addEventListener("DOMContentLoaded", () => {
   envEl("env-base")?.addEventListener("change", envBaseMudou);
   envEl("env-telesc")?.addEventListener("change", envBaseMudou);
   envEl("env-cliente")?.addEventListener("change", () => {
-    const c = (ENV.opcoes?.clientes || []).find(x => eqNorm(x.nome) === eqNorm(envEl("env-cliente").value));
+    const c = envClientes().find(x => eqNorm(x.rotulo) === eqNorm(envEl("env-cliente").value));
     if (c && c.endereco_envio && !envEl("env-endereco").value) envEl("env-endereco").value = c.endereco_envio;
+    if (c && c.tipo === "obra" && !envEl("env-obra").value) envEl("env-obra").value = c.nome;
   });
   envEl("env-btn-previa")?.addEventListener("click", () => gerarPrevia(false));
   envEl("env-btn-redistribuir")?.addEventListener("click", () => gerarPrevia(true));
@@ -3240,7 +3315,10 @@ window.addEventListener("DOMContentLoaded", () => {
   envEl("env-foto")?.addEventListener("change", e => enviarFotoRomaneio(e.target.files && e.target.files[0]));
   envEl("env-motorista")?.addEventListener("change", () => {
     const m = (ENV.opcoes?.motoristas || []).find(x => eqNorm(x.nome) === eqNorm(envEl("env-motorista").value));
-    if (m && m.cpf && !envEl("env-cpf").value) envEl("env-cpf").value = m.cpf;
+    if (!m) return;
+    // Últimas placas usadas por este motorista (pode trocar: a ligação do dia fica no romaneio)
+    [["env-cpf", "cpf"], ["env-placa-cavalo", "placa_cavalo"], ["env-placa-c1", "placa_carreta1"], ["env-placa-c2", "placa_carreta2"]]
+      .forEach(([id, k]) => { if (m[k] && !envEl(id).value) envEl(id).value = m[k]; });
   });
   envEl("cad-tabela")?.addEventListener("change", carregarCadastro);
   envEl("cad-btn-buscar")?.addEventListener("click", carregarCadastro);
