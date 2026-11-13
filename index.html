@@ -1,13 +1,13 @@
-<!-- index.html - v6.2.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.2.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.2.0" />
+  <meta name="app-version" content="v6.2.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.2.0" />
+  <link rel="stylesheet" href="style.css?v=6.2.1" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -635,6 +635,7 @@
         <label class="campo-label" for="env-just">Justificativa (se faltar ou sobrar peça)</label>
         <textarea id="env-just" rows="2"></textarea>
         <div class="env-acoes"><button type="button" id="env-btn-confirmar">Confirmar romaneio</button></div>
+        <div id="env-confirmar-hint" class="env-hint" hidden></div>
         </div>
 
         <h3>Leituras</h3>
@@ -702,7 +703,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.2.0"></script>
+  <script src="app.js?v=6.2.1"></script>
 </body>
 </html>
 

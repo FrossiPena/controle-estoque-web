@@ -71,7 +71,7 @@ const servidor = http.createServer((req, res) => {
       return { romaneio: { ...r, cliente: e.cliente, gt: e.gt, modelo: e.modelo },
         itens: r.itens.map(i => ({ ...i, lidos: lidos(r.id, i.codigo) })),
         leituras: S.leituras.filter(l => l.romaneio_id === r.id).map((l, k) => ({ id: k + 1, quando: "12/11 10:00", usuario: "real", ...l })),
-        fotos: [], outros: S.roms.filter(x => x.envio_id === r.envio_id && x.id !== r.id).map(x => ({ id: x.id, numero: x.numero, veiculo: x.veiculo, status: x.status })),
+        fotos: S.fotoFake ? [{ id: 1, url: "data:," }] : [], outros: S.roms.filter(x => x.envio_id === r.envio_id && x.id !== r.id).map(x => ({ id: x.id, numero: x.numero, veiculo: x.veiculo, status: x.status })),
         historico: [] };
     },
     ler_peca: (p) => {
@@ -257,14 +257,19 @@ const servidor = http.createServer((req, res) => {
     // D) Dados da carreta e confirmar
     await page.evaluate(() => { envView("romaneio"); recarregarRomaneio(); });
     await page.waitForSelector("#env-romaneio:not([hidden])");
+    assert.match(await page.locator("#env-confirmar-hint").innerText(), /Para confirmar, falta:[\s\S]*placa do cavalo[\s\S]*motorista/);
     await page.click("#env-btn-confirmar");
-    await page.waitForFunction(() => /Não confirmado/.test(document.getElementById("env-status").textContent));
+    await page.waitForFunction(() => /não confirmado/.test(document.getElementById("env-status").textContent));
+    assert.notStrictEqual(await page.getAttribute("#net-status", "data-estado"), "erro", "recusa não é erro de comunicação");
     await page.fill("#env-placa-cavalo", "abc1d23");
     await page.fill("#env-motorista", "Motorista Teste");
+    await page.fill("#env-transp", "Cat Log");
+    S.fotoFake = true;
     await page.click("#env-btn-dados");
     await page.waitForFunction(() => /salvos/.test(document.getElementById("env-status").textContent));
     assert.strictEqual(S.roms.find(r => r.id === rLanca2.id).placa_cavalo, "abc1d23", "placa enviada (a função grava em maiúsculas)");
     await page.fill("#env-just", "teste");
+    assert.ok(await page.isHidden("#env-confirmar-hint"), "com justificativa e dados, nada falta");
     await page.click("#env-btn-confirmar");
     await page.waitForFunction(() => /Romaneio conferido/.test(document.getElementById("env-status").textContent));
     await page.waitForSelector("#env-btn-pedir-nota");

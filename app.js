@@ -1,3 +1,4 @@
+// v6.2.1 - Confirmar romaneio: lista do que falta abaixo do botão; recusa da regra não pinta o sinal de ERRO
 // v6.2.0 - Motorista pelo CPF (primeiro campo, máscara, sugestões, sem duplicidade), celulares; transportadora com
 //          contato operacional e e-mail da NF (CT-e); romaneio: CPF puxa o motorista
 // v6.1.1 - Novo envio: avisos viram "Divergências de cadastro" com código + descrição; tocar abre o cadastro da
@@ -60,7 +61,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.2.0";
+const APP_VERSION = "v6.2.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2722,15 +2723,24 @@ const ENV = { papeis: null, usuario: "", opcoes: null, view: "lista", envioId: n
 const ROMANEIO_TIMEOUT_MS = 30000;
 
 async function romPost(modo, dados) {
+  // Sinal do topo: só falha de comunicação fica amarela. Recusa da regra ("faltam dados") chega como resposta
+  // válida e aparece na própria tela (status/hint), não como ERRO.
   const enviar = async () => {
     if (!SB.token || Date.now() > SB.expira) await sbEntrar();
-    const { raw } = await netFetch(`${SUPABASE_URL}/functions/v1/romaneio`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${SB.token}`, apikey: SUPABASE_CHAVE, "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign({ modo }, dados || {}))
-    }, ROMANEIO_TIMEOUT_MS);
-    let j = null; try { j = JSON.parse(raw); } catch {}
-    return j || { ok: false, error: "resposta inválida: " + String(raw).slice(0, 200) };
+    netInicio();
+    let comunicou = false;
+    try {
+      const { resp, raw } = await netFetch(`${SUPABASE_URL}/functions/v1/romaneio`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SB.token}`, apikey: SUPABASE_CHAVE, "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ modo }, dados || {}))
+      }, ROMANEIO_TIMEOUT_MS, true);
+      let j = null; try { j = JSON.parse(raw); } catch {}
+      comunicou = resp.ok && !!j;
+      return j || { ok: false, error: "resposta inválida: " + String(raw).slice(0, 200) };
+    } finally {
+      netFim(comunicou);
+    }
   };
   try {
     let j = await enviar();
@@ -3100,6 +3110,7 @@ async function recarregarRomaneio() {
     (r.status_por && !ROM_EM_CARGA.includes(r.status) ? ` por ${r.status_por}` : "") +
     (r.status_motivo ? ` · ${r.status_motivo}` : "") + (r.nota_fiscal ? ` · NF ${r.nota_fiscal}` : "");
   renderSituacaoRomaneio(r);
+  setTimeout(() => renderHintConfirmar(), 0);
 
   // Itens: previsto × lido
   const box = envEl("env-rom-itens"); box.replaceChildren();
@@ -3213,8 +3224,8 @@ async function salvarDadosRomaneio() {
   Object.entries(ENV_CAMPOS_ROM).forEach(([id, k]) => { d[k] = envEl(id).value; });
   if (envEl("env-veiculo").value) d.veiculo = envEl("env-veiculo").value;
   const j = await romPost("editar_romaneio", d);
+  if (j.ok) await recarregarRomaneio();
   envStatus(j.ok ? "Dados do romaneio salvos." : "Não salvo: " + j.error);
-  if (j.ok) recarregarRomaneio();
 }
 
 async function enviarFotoRomaneio(file) {
@@ -3285,11 +3296,42 @@ async function excluirEnvio(escopo) {
   abrirEnvioDetalhe(ENV.envioId);
 }
 
+// O que ainda falta para confirmar (mesmas regras da função), mostrado abaixo do botão
+function pendenciasConfirmar(j) {
+  const r = j.romaneio, falta = [];
+  const faltas = j.itens.filter(i => i.lidos < i.qtd);
+  if (faltas.length && !envEl("env-just").value.trim())
+    falta.push(`${faltas.length} peça(s) sem conferir: ` + faltas.slice(0, 5).map(i => `${i.descricao || i.codigo_exibicao} (${i.lidos}/${i.qtd})`).join("; ")
+      + (faltas.length > 5 ? "…" : "") + " — confira ou escreva a justificativa");
+  if (!r.placa_cavalo) falta.push("placa do cavalo");
+  if (!r.motorista) falta.push("motorista");
+  if (!r.transportadora) falta.push("transportadora");
+  if (!j.fotos.length) falta.push("ao menos uma foto");
+  return falta;
+}
+function renderHintConfirmar(extra) {
+  const box = envEl("env-confirmar-hint");
+  if (!box || !ENV.rom) return;
+  box.replaceChildren();
+  const falta = extra || pendenciasConfirmar(ENV.rom);
+  box.hidden = !falta.length;
+  if (!falta.length) return;
+  box.appendChild(eqEl("p", "", "Para confirmar, falta:"));
+  const ul = document.createElement("ul");
+  falta.forEach(f => ul.appendChild(eqEl("li", "", f)));
+  box.appendChild(ul);
+  const naoSalvo = Object.entries(ENV_CAMPOS_ROM).some(([id, k]) => (envEl(id).value || "") !== (ENV.rom.romaneio[k] || ""));
+  if (naoSalvo) box.appendChild(eqEl("p", "", "Há dados da carreta digitados e não salvos: toque em \"Salvar dados\" antes."));
+}
+
 async function confirmarRomaneio() {
+  const falta = pendenciasConfirmar(ENV.rom);
+  if (falta.length) { renderHintConfirmar(falta); envStatus("Romaneio não confirmado: veja o que falta abaixo do botão."); return; }
   if (!confirm("Confirmar (conferido) este romaneio? Depois só um admin reabre.")) return;
   const j = await romPost("confirmar", { id: ENV.romaneioId, justificativa: envEl("env-just").value });
   if (!j.ok) {
-    envStatus("Não confirmado: " + j.error + (j.faltas ? " — " + j.faltas.join("; ") : ""));
+    renderHintConfirmar([j.error + (j.faltas ? ": " + j.faltas.join("; ") : "")]);
+    envStatus("Romaneio não confirmado: veja o que falta abaixo do botão.");
     return;
   }
   envStatus("Romaneio conferido. Próximo passo: solicitar a nota fiscal.");
@@ -3644,6 +3686,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   envEl("env-btn-dados")?.addEventListener("click", salvarDadosRomaneio);
   envEl("env-btn-confirmar")?.addEventListener("click", confirmarRomaneio);
+  envEl("env-just")?.addEventListener("input", () => renderHintConfirmar());
   envEl("env-foto")?.addEventListener("change", e => enviarFotoRomaneio(e.target.files && e.target.files[0]));
   envEl("env-cpf")?.addEventListener("input", () => {
     const n = envEl("env-cpf").value.replace(/\D/g, "");
