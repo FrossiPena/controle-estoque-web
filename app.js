@@ -1,3 +1,6 @@
+// v6.1.0 - Romaneio: planejado/iniciado/conferido/aguardando nota/concluído/sinistrado/excluído (pedir nota,
+//          concluir com NF, sinistro, reabrir); Excluir envio (só planejados ou geral com EXCLUIR).
+//          Novo envio: Obra = lista com o próprio cliente e as obras dele; "+ Adicionar obra" cadastra já ligada
 // v6.0.2 - Motorista: transportadora escolhida pelo nome (sugestões a partir de 2 letras), não mais pelo id
 // v6.0.1 - Transportadora: "Buscar CNPJ" (nome pela Receita), CNPJ vermelho até ter 14 dígitos
 // v6.0.0 - Envio de grua completo (Supabase). Clientes: CNPJ vermelho até ter 14 dígitos e com máscara antes da busca; "+ Cadastrar obra" já ligada ao
@@ -53,7 +56,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.0.2";
+const APP_VERSION = "v6.1.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2739,7 +2742,13 @@ const envEl = (id) => document.getElementById(id);
 function envStatus(msg) { const e = envEl("env-status"); if (e) e.textContent = msg || ""; }
 function envOpcao(sel, valor, texto) { const o = document.createElement("option"); o.value = valor; o.textContent = texto ?? valor; sel.appendChild(o); }
 const fmtNum = (n, casas = 1) => (n == null || isNaN(n)) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: casas });
-const ROM_FECHADO = ["confirmado", "nf_solicitada"];
+// Romaneio: planejado → iniciado (1ª leitura) → conferido (Confirmar) → aguardando nota → concluído;
+// fora do fluxo: sinistrado e excluído. Só planejado/iniciado aceita leitura, mover, fotos e edição.
+const ROM_EM_CARGA = ["planejado", "iniciado"];
+const ROM_FECHADO = ["conferido", "aguardando_nota", "concluido", "sinistrado", "excluido"];
+const ROM_STATUS = { planejado: "Planejado", iniciado: "Iniciado", conferido: "Conferido", aguardando_nota: "Aguardando nota",
+  concluido: "Concluído", sinistrado: "Sinistrado", excluido: "Excluído" };
+const ENVIO_STATUS = { aberto: "Em aberto", concluido: "Concluído", excluido: "Excluído" };
 
 function envView(nome) {
   ENV.view = nome;
@@ -2779,11 +2788,11 @@ async function carregarEnvios() {
   j.envios.forEach(e => {
     const g = `${e.cliente} – ${e.gt}`;
     if (g !== grupo) { grupo = g; box.appendChild(eqEl("h3", "eq-grupo", g)); }
-    const card = eqEl("button", "env-card");
+    const card = eqEl("button", "env-card env-envio-" + e.status);
     card.type = "button";
     card.appendChild(eqEl("div", "eq-item-titulo", `${e.obra || "Envio"} #${e.id} · ${e.modelo}`));
-    card.appendChild(eqEl("div", "", `${e.romaneios} veículo(s), ${e.confirmados} confirmado(s) · peças ${e.lidas}/${e.previstas}`));
-    card.appendChild(eqEl("div", "env-sub", `${e.status} · criado por ${e.criado_por} em ${new Date(e.criado_em).toLocaleDateString("pt-BR")}`));
+    card.appendChild(eqEl("div", "", `${e.validos ?? e.romaneios} veículo(s), ${e.confirmados} conferido(s) · peças ${e.lidas}/${e.previstas}`));
+    card.appendChild(eqEl("div", "env-sub", `${ENVIO_STATUS[e.status] || e.status} · criado por ${e.criado_por} em ${new Date(e.criado_em).toLocaleDateString("pt-BR")}`));
     card.addEventListener("click", () => abrirEnvioDetalhe(e.id));
     box.appendChild(card);
   });
@@ -2796,6 +2805,8 @@ function novoEnvio() {
   envEl("env-previa").hidden = true;
   const dl = envEl("env-clientes"); dl.replaceChildren();
   envClientes().forEach(c => envOpcao(dl, c.rotulo));
+  envEl("env-nova-obra").hidden = true;
+  envPreencherObras();
   const gt = envEl("env-gt"); gt.replaceChildren();
   envOpcao(gt, "", op.gts.length ? "Selecione o GT…" : "Sem GTs (carga da Validação)");
   op.gts.forEach(g => envOpcao(gt, g.gt, `${g.gt} · ${g.modelo || ""}`));
@@ -2896,11 +2907,51 @@ function renderPrevia() {
   });
 }
 
-// Clientes do envio: obra aparece como "Obra (Construtora)"; a empresa sozinha também pode ser escolhida
+// Clientes do envio (sem as obras: elas aparecem no campo Obra depois de escolher o cliente)
 function envClientes() {
-  const cl = ENV.opcoes?.clientes || [];
-  const porId = Object.fromEntries(cl.map(c => [c.id, c]));
-  return cl.map(c => ({ ...c, rotulo: c.tipo === "obra" && porId[c.pai_id] ? `${c.nome} (${porId[c.pai_id].nome})` : c.nome }));
+  return (ENV.opcoes?.clientes || []).filter(c => c.tipo !== "obra").map(c => ({ ...c, rotulo: c.nome }));
+}
+const envClienteEscolhido = () => envClientes().find(c => eqNorm(c.rotulo) === eqNorm(envEl("env-cliente").value)) || null;
+
+// Campo Obra: o próprio cliente e as obras dele (cadastradas). Valor = id do cadastro escolhido.
+function envPreencherObras(selecionarId) {
+  const sel = envEl("env-obra"); sel.replaceChildren();
+  const cli = envClienteEscolhido(), nome = envEl("env-cliente").value.trim();
+  envEl("env-btn-add-obra").disabled = !cli;
+  if (!nome) { envOpcao(sel, "", "Escolha o cliente"); return; }
+  if (!cli) { envOpcao(sel, "", `${nome} (cliente sem cadastro)`); return; }
+  envOpcao(sel, cli.id, `${cli.nome} (o próprio cliente)`);
+  (ENV.opcoes?.clientes || []).filter(o => o.tipo === "obra" && String(o.pai_id) === String(cli.id))
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .forEach(o => envOpcao(sel, o.id, o.nome + (o.cidade ? ` · ${o.cidade}${o.uf ? "/" + o.uf : ""}` : "")));
+  sel.value = selecionarId != null ? String(selecionarId) : String(cli.id);
+  envObraMudou();
+}
+function envObraEscolhida() {
+  const id = envEl("env-obra").value;
+  return id ? (ENV.opcoes?.clientes || []).find(c => String(c.id) === id) || null : null;
+}
+function envObraMudou() {
+  const o = envObraEscolhida(), cli = envClienteEscolhido();
+  const end = (o && o.endereco_envio) || (cli && cli.endereco_envio) || "";
+  if (end) envEl("env-endereco").value = end;
+}
+
+// "+ Adicionar obra": cadastra a obra já ligada ao cliente e a escolhe
+async function envAdicionarObra() {
+  const cli = envClienteEscolhido();
+  const nome = envEl("env-nova-obra-nome").value.trim();
+  if (!cli) { envStatus("Escolha um cliente cadastrado antes de adicionar obra."); return; }
+  if (!nome) { envStatus("Informe o nome da obra."); return; }
+  const j = await romPost("cad_salvar", { tabela: "clientes", dados: { tipo: "obra", pai_id: cli.id, nome,
+    endereco_envio: envEl("env-nova-obra-endereco").value, cidade: cli.cidade, uf: cli.uf, ativo: true } });
+  if (!j.ok) { envStatus("Obra não cadastrada: " + j.error); return; }
+  const op = await romPost("opcoes");
+  if (op.ok) ENV.opcoes = op;
+  envEl("env-nova-obra").hidden = true;
+  envEl("env-nova-obra-nome").value = ""; envEl("env-nova-obra-endereco").value = "";
+  envStatus(`Obra ${nome} cadastrada em ${cli.nome}.`);
+  envPreencherObras(j.linha ? j.linha.id : null);
 }
 
 async function salvarEnvio() {
@@ -2909,9 +2960,9 @@ async function salvarEnvio() {
   if (!cliente) { envStatus("Informe o cliente."); return; }
   const btn = envEl("env-btn-salvar"); btn.disabled = true;
   envStatus("Salvando o envio…");
-  const cli = envClientes().find(c => eqNorm(c.rotulo) === eqNorm(cliente));
-  const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, cliente_id: cli ? cli.id : null, endereco_envio: envEl("env-endereco").value,
-                                            obra: envEl("env-obra").value, veiculos: ENV.previa.veiculos });
+  const cli = envClienteEscolhido(), obra = envObraEscolhida();
+  const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, cliente_id: (obra || cli || {}).id ?? null,
+    endereco_envio: envEl("env-endereco").value, obra: obra ? obra.nome : cliente, veiculos: ENV.previa.veiculos });
   btn.disabled = false;
   if (!j.ok) { envStatus("Não salvo: " + j.error); return; }
   envStatus(`Envio #${j.id} salvo com ${j.romaneios} romaneio(s).`);
@@ -2930,13 +2981,16 @@ async function abrirEnvioDetalhe(id) {
   envEl("env-det-titulo").textContent = `${e.cliente} – ${e.gt}`;
   envEl("env-det-info").textContent = `Envio #${e.id} · ${e.obra || "sem obra"} · ${e.modelo} · lança ${fmtNum(e.lanca_m)} m` +
     (e.altura_m ? ` · altura ${fmtNum(e.altura_m, 2)} m` : "") + (e.base ? ` · ${e.base}` : "") +
-    (e.lastro_t ? ` · lastro ${fmtNum(e.lastro_t, 2)} t` : "") + ` · ${e.status}`;
+    (e.lastro_t ? ` · lastro ${fmtNum(e.lastro_t, 2)} t` : "") + ` · ${ENVIO_STATUS[e.status] || e.status}`;
+  ENV.envio = j;
+  envEl("env-excluir").hidden = true;
+  envEl("env-btn-excluir-envio").hidden = !envPode("expedicao") || e.status === "excluido";
   j.romaneios.forEach(r => {
     const card = eqEl("button", "env-card env-st-" + r.status);
     card.type = "button";
     card.appendChild(eqEl("div", "eq-item-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"}`));
     card.appendChild(eqEl("div", "", `peças ${r.lidas}/${r.previstas} · ${fmtNum(r.comp_m, 2)} m · ${fmtNum(r.peso_kg, 0)} kg`));
-    card.appendChild(eqEl("div", "env-sub", `${r.status}${r.placa_cavalo ? " · " + r.placa_cavalo : ""}${r.motorista ? " · " + r.motorista : ""}`));
+    card.appendChild(eqEl("div", "env-sub", `${ROM_STATUS[r.status] || r.status}${r.placa_cavalo ? " · " + r.placa_cavalo : ""}${r.motorista ? " · " + r.motorista : ""}`));
     card.addEventListener("click", () => abrirRomaneio(r.id));
     box.appendChild(card);
   });
@@ -2968,8 +3022,10 @@ async function recarregarRomaneio() {
   const fechado = ROM_FECHADO.includes(r.status);
   const podeConferir = envPode("operacional", "expedicao");
   envEl("env-rom-titulo").textContent = `Romaneio ${r.numero} · ${r.cliente} – ${r.gt}`;
-  envEl("env-rom-info").textContent = `${r.modelo} · ${r.veiculo || "veículo a definir"} · ${r.status}` +
-    (r.confirmado_por ? ` por ${r.confirmado_por}` : "") + (r.justificativa ? ` · justificativa: ${r.justificativa}` : "");
+  envEl("env-rom-info").textContent = `${r.modelo} · ${r.veiculo || "veículo a definir"} · ${ROM_STATUS[r.status] || r.status}` +
+    (r.status_por && !ROM_EM_CARGA.includes(r.status) ? ` por ${r.status_por}` : "") +
+    (r.status_motivo ? ` · ${r.status_motivo}` : "") + (r.nota_fiscal ? ` · NF ${r.nota_fiscal}` : "");
+  renderSituacaoRomaneio(r);
 
   // Itens: previsto × lido
   const box = envEl("env-rom-itens"); box.replaceChildren();
@@ -3106,14 +3162,63 @@ async function enviarFotoRomaneio(file) {
   recarregarRomaneio();
 }
 
+// Botões do status: conferido → pedir nota; aguardando nota → concluir com o número da nota; sinistro; reabrir (admin)
+function renderSituacaoRomaneio(r) {
+  const box = envEl("env-situacao"); box.replaceChildren();
+  envEl("env-confirmar-sec").hidden = !ROM_EM_CARGA.includes(r.status);
+  const linha = eqEl("div", "env-acoes");
+  const botao = (id, texto, fn, cls) => { const b = eqEl("button", cls || "", texto); b.type = "button"; b.id = id; b.addEventListener("click", fn); linha.appendChild(b); return b; };
+  const acao = async (modo, dados, ok) => {
+    const j = await romPost(modo, Object.assign({ id: r.id }, dados));
+    envStatus(j.ok ? ok(j) : "Não feito: " + j.error);
+    if (j.ok) recarregarRomaneio();
+  };
+  box.appendChild(eqEl("p", "env-status-rom env-st-" + r.status, `Situação: ${ROM_STATUS[r.status] || r.status}`));
+  if (r.status === "conferido" && envPode("operacional", "expedicao"))
+    botao("env-btn-pedir-nota", "Solicitar nota fiscal", () => acao("solicitar_nota", {}, () => "Romaneio aguardando nota."));
+  if (r.status === "aguardando_nota" && envPode("operacional", "expedicao")) {
+    const nf = document.createElement("input"); nf.id = "env-nf-concluir"; nf.placeholder = "Número da nota fiscal"; nf.value = r.nota_fiscal || "";
+    linha.appendChild(nf);
+    botao("env-btn-concluir", "Concluir (nota emitida)", () => acao("concluir", { nota_fiscal: nf.value },
+      j => "Romaneio concluído." + (j.envioConcluido ? " Envio concluído." : "")));
+  }
+  if (!["sinistrado", "excluido"].includes(r.status) && envPode("expedicao")) {
+    const mot = document.createElement("input"); mot.id = "env-sinistro-motivo"; mot.placeholder = "O que aconteceu (sinistro)";
+    const b = botao("env-btn-sinistro", "Registrar sinistro", () => {
+      if (mot.hidden) { mot.hidden = false; mot.focus(); return; }
+      if (!mot.value.trim()) { envStatus("Descreva o sinistro."); return; }
+      acao("sinistrar", { motivo: mot.value }, () => "Sinistro registrado.");
+    }, "env-perigo");
+    mot.hidden = true; b.before(mot);
+  }
+  if (!ROM_EM_CARGA.includes(r.status) && envPode("admin"))
+    botao("env-btn-reabrir", "Reabrir (admin)", () => acao("reabrir", {}, () => "Romaneio reaberto (iniciado)."));
+  box.appendChild(linha);
+}
+
+// Excluir envio: só os romaneios planejados ou exclusão geral (qualquer status; pede EXCLUIR). Marca excluído, não apaga.
+async function excluirEnvio(escopo) {
+  const motivo = envEl("env-excluir-motivo").value.trim();
+  if (!motivo) { envStatus("Informe o motivo da exclusão."); return; }
+  const dados = { envio_id: ENV.envioId, escopo, motivo };
+  if (escopo === "geral") {
+    dados.confirmo = envEl("env-excluir-confirmo").value.trim().toUpperCase();
+    if (dados.confirmo !== "EXCLUIR") { envStatus("Para a exclusão geral, digite EXCLUIR."); return; }
+  }
+  const j = await romPost("excluir_envio", dados);
+  if (!j.ok) { envStatus("Não excluído: " + j.error); return; }
+  envStatus(`${j.excluidos} romaneio(s) excluído(s).` + (j.envio === "excluido" ? " Envio excluído." : ""));
+  abrirEnvioDetalhe(ENV.envioId);
+}
+
 async function confirmarRomaneio() {
-  if (!confirm("Confirmar este romaneio? Depois só um admin reabre.")) return;
+  if (!confirm("Confirmar (conferido) este romaneio? Depois só um admin reabre.")) return;
   const j = await romPost("confirmar", { id: ENV.romaneioId, justificativa: envEl("env-just").value });
   if (!j.ok) {
     envStatus("Não confirmado: " + j.error + (j.faltas ? " — " + j.faltas.join("; ") : ""));
     return;
   }
-  envStatus("Romaneio confirmado." + (j.envioConcluido ? " Todos os romaneios do envio estão confirmados." : ""));
+  envStatus("Romaneio conferido. Próximo passo: solicitar a nota fiscal.");
   recarregarRomaneio();
 }
 
@@ -3389,21 +3494,17 @@ window.addEventListener("DOMContentLoaded", () => {
   envEl("env-modelo")?.addEventListener("change", envModeloMudou);
   envEl("env-base")?.addEventListener("change", envBaseMudou);
   envEl("env-telesc")?.addEventListener("change", envBaseMudou);
-  envEl("env-cliente")?.addEventListener("change", () => {
-    const c = envClientes().find(x => eqNorm(x.rotulo) === eqNorm(envEl("env-cliente").value));
-    if (c && c.endereco_envio && !envEl("env-endereco").value) envEl("env-endereco").value = c.endereco_envio;
-    if (c && c.tipo === "obra" && !envEl("env-obra").value) envEl("env-obra").value = c.nome;
-    if (envEl("env-obra-cliente").checked) envEl("env-obra").value = envEl("env-cliente").value;
-  });
-  envEl("env-obra-cliente")?.addEventListener("change", e => {
-    const obra = envEl("env-obra");
-    obra.disabled = e.target.checked;
-    if (e.target.checked) obra.value = envEl("env-cliente").value;
-  });
+  envEl("env-cliente")?.addEventListener("change", () => envPreencherObras());
+  envEl("env-obra")?.addEventListener("change", envObraMudou);
+  envEl("env-btn-add-obra")?.addEventListener("click", () => { envEl("env-nova-obra").hidden = !envEl("env-nova-obra").hidden; });
+  envEl("env-btn-salvar-obra")?.addEventListener("click", envAdicionarObra);
   envEl("env-btn-previa")?.addEventListener("click", () => gerarPrevia(false));
   envEl("env-btn-redistribuir")?.addEventListener("click", () => gerarPrevia(true));
   envEl("env-btn-salvar")?.addEventListener("click", salvarEnvio);
   envEl("env-btn-novo-veiculo")?.addEventListener("click", novoVeiculoEnvio);
+  envEl("env-btn-excluir-envio")?.addEventListener("click", () => { envEl("env-excluir").hidden = !envEl("env-excluir").hidden; });
+  envEl("env-btn-excluir-planejados")?.addEventListener("click", () => excluirEnvio("planejados"));
+  envEl("env-btn-excluir-geral")?.addEventListener("click", () => excluirEnvio("geral"));
   envEl("env-btn-ler")?.addEventListener("click", () => { ENV.leitorAtivo = true; envEl("env-leitura").hidden = true; iniciarLeitor("env-qr"); });
   envEl("env-btn-parar")?.addEventListener("click", () => { ENV.leitorAtivo = false; pararLeitor(); });
   envEl("env-btn-registrar")?.addEventListener("click", () => {

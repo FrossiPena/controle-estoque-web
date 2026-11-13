@@ -44,7 +44,8 @@ const servidor = http.createServer((req, res) => {
     me: () => ({ usuario: S.usuario, papeis: S.papeis }),
     opcoes: () => ({ modelos: [{ nome: M, lancas: ["50m", "45m"] }], gts: [{ gt: "GT-10", modelo: M }],
       bases: [{ modelo: M, base: "CHUMBADOR X" }], torres: [{ modelo: M, base: "CHUMBADOR X", telescopagem: false, altura_m: 20.7 }],
-      lastros: [], frota, clientes: [{ id: 1, nome: "S11D", endereco_envio: "Canaã dos Carajás - PA" }], transportadoras: [{ id: 3, nome: "Cat Log" }, { id: 4, nome: "Transcarga" }], motoristas: [], placas: [] }),
+      lastros: [], frota, clientes: [{ id: 1, tipo: "empresa", nome: "S11D", endereco_envio: "Canaã dos Carajás - PA" },
+                { id: 2, tipo: "obra", pai_id: 1, nome: "Mina Norte", endereco_envio: "Estrada da Mina, km 5" }], transportadoras: [{ id: 3, nome: "Cat Log" }, { id: 4, nome: "Transcarga" }], motoristas: [], placas: [] }),
     previa: (p) => {
       const cfg = { ...p.cfg, lanca_m: Number(p.cfg.lanca_m), altura_m: p.cfg.altura_m == null ? null : Number(p.cfg.altura_m) };
       const r = p.itens ? { itens: p.itens.filter(i => i.qtd > 0), avisos: [] } : montarLista(cfg, { relacaoItens, regras, pecas });
@@ -53,6 +54,7 @@ const servidor = http.createServer((req, res) => {
     },
     salvar_envio: (p) => {
       const id = S.envios.length + 1;
+      S.ultimoEnvio = p;
       S.envios.push({ id, cliente: p.cliente, obra: p.obra, gt: p.cfg.gt, modelo: p.cfg.modelo, lanca_m: p.cfg.lanca_m, status: "aberto", criado_por: "real", criado_em: new Date().toISOString() });
       p.veiculos.forEach((v, k) => S.roms.push({ id: S.roms.length + 1, envio_id: id, numero: k + 1, veiculo: v.tipo, status: "planejado",
         itens: v.itens.map(i => ({ codigo: i.codigo, codigo_exibicao: i.codigoExib, descricao: i.descricao, qtd: i.qtd, forro: i.forro, filha: i.filha, origem: "plano" })) }));
@@ -86,16 +88,26 @@ const servidor = http.createServer((req, res) => {
         else r.itens.push({ codigo: cod, codigo_exibicao: cod, descricao: "PEÇA EXTRA", qtd: 1, origem: "manual" });
       }
       S.leituras.push({ romaneio_id: r.id, codigo9: p.codigo9, id_individual: p.id_individual, codigo: cod, manual: p.manual });
-      r.status = "carregando";
+      r.status = "iniciado";
       return { codigo: cod, descricao: pecas[cod]?.descricao || "PEÇA EXTRA" };
     },
     editar_romaneio: (p) => { Object.assign(S.roms.find(x => x.id === p.id), p); return {}; },
+    solicitar_nota: (p) => { const r = S.roms.find(x => x.id === p.id); if (r.status !== "conferido") return { ok: false, error: "não conferido" }; r.status = "aguardando_nota"; return {}; },
+    concluir: (p) => { const r = S.roms.find(x => x.id === p.id); if (!p.nota_fiscal) return { ok: false, error: "informe o número da nota fiscal" };
+      r.status = "concluido"; r.nota_fiscal = p.nota_fiscal; return { envioConcluido: false }; },
+    excluir_envio: (p) => {
+      if (p.escopo === "geral" && p.confirmo !== "EXCLUIR") return { ok: false, error: "digite EXCLUIR" };
+      const alvo = S.roms.filter(r => r.envio_id === p.envio_id && r.status !== "excluido" && (p.escopo === "geral" || r.status === "planejado"));
+      alvo.forEach(r => { r.status = "excluido"; r.status_motivo = p.motivo; });
+      S.exclusoes = (S.exclusoes || []).concat([{ escopo: p.escopo, n: alvo.length }]);
+      return { excluidos: alvo.length, envio: S.roms.every(r => r.envio_id !== p.envio_id || r.status === "excluido") ? "excluido" : "aberto" };
+    },
     confirmar: (p) => {
       const r = S.roms.find(x => x.id === p.id);
       const faltas = r.itens.filter(i => lidos(r.id, i.codigo) < i.qtd).map(i => i.descricao);
       if (faltas.length && !p.justificativa) return { ok: false, error: "há peças não conferidas: justifique ou confira", faltas };
       if (!r.placa_cavalo) return { ok: false, error: "falta preencher: placa do cavalo" };
-      r.status = "confirmado"; r.justificativa = p.justificativa;
+      r.status = "conferido"; r.justificativa = p.justificativa;
       return { faltas };
     },
     cad_listar: (p) => p.tabela === "motoristas" ? ({ podeEditar: true, total: 0, linhas: [],
@@ -156,11 +168,18 @@ const servidor = http.createServer((req, res) => {
     await page.fill("#env-cliente", "S11D");
     await page.dispatchEvent("#env-cliente", "change");
     assert.strictEqual(await page.inputValue("#env-endereco"), "Canaã dos Carajás - PA", "endereço do cadastro do cliente");
-    await page.check("#env-obra-cliente");
-    assert.strictEqual(await page.inputValue("#env-obra"), "S11D", "obra = o próprio cliente");
-    assert.ok(await page.isDisabled("#env-obra"));
-    await page.uncheck("#env-obra-cliente");
-    await page.fill("#env-obra", "Mina");
+    assert.deepStrictEqual(await page.locator("#env-obra option").allInnerTexts(), ["S11D (o próprio cliente)", "Mina Norte"]);
+    assert.strictEqual(await page.inputValue("#env-obra"), "1", "começa com o próprio cliente");
+    await page.selectOption("#env-obra", "2");
+    assert.strictEqual(await page.inputValue("#env-endereco"), "Estrada da Mina, km 5", "endereço da obra");
+    // + Adicionar obra: cadastra ligada ao cliente
+    await page.click("#env-btn-add-obra");
+    await page.fill("#env-nova-obra-nome", "Mina Sul");
+    await page.click("#env-btn-salvar-obra");
+    await page.waitForFunction(() => /Obra Mina Sul cadastrada/.test(document.getElementById("env-status").textContent));
+    const novaObra = S.cad[S.cad.length - 1];
+    assert.strictEqual(novaObra.dados.tipo, "obra"); assert.strictEqual(novaObra.dados.pai_id, 1);
+    await page.selectOption("#env-obra", "2");
     await page.selectOption("#env-gt", "GT-10");
     assert.strictEqual(await page.inputValue("#env-modelo"), M, "modelo vem do GT");
     await page.selectOption("#env-lanca", "50m");
@@ -184,6 +203,7 @@ const servidor = http.createServer((req, res) => {
     await page.waitForSelector("#env-detalhe:not([hidden])");
     assert.match(await texto("#env-det-titulo"), /S11D – GT-10/);
     assert.strictEqual(await page.locator("#env-romaneios .env-card").count(), nVeic);
+    assert.strictEqual(S.ultimoEnvio.obra, "Mina Norte"); assert.strictEqual(S.ultimoEnvio.cliente_id, 2);
     console.log(`ok - novo envio: cliente com endereço, GT → modelo, prévia (${nVeic} veículos), redistribuir, salvar`);
 
     // C) Romaneio com a LANÇA 2 (romaneio 2 ou 3) e leituras
@@ -229,9 +249,37 @@ const servidor = http.createServer((req, res) => {
     assert.strictEqual(S.roms.find(r => r.id === rLanca2.id).placa_cavalo, "abc1d23", "placa enviada (a função grava em maiúsculas)");
     await page.fill("#env-just", "teste");
     await page.click("#env-btn-confirmar");
-    await page.waitForFunction(() => /Romaneio confirmado/.test(document.getElementById("env-status").textContent));
-    assert.ok(await page.isDisabled("#env-btn-registrar"), "romaneio confirmado não aceita leitura");
-    console.log("ok - confirmar: recusa sem dados, salva dados da carreta, confirma com justificativa e trava");
+    await page.waitForFunction(() => /Romaneio conferido/.test(document.getElementById("env-status").textContent));
+    await page.waitForSelector("#env-btn-pedir-nota");
+    assert.ok(await page.isDisabled("#env-btn-registrar"), "romaneio conferido não aceita leitura");
+    assert.ok(await page.isHidden("#env-confirmar-sec"));
+    await page.click("#env-btn-pedir-nota");
+    await page.waitForSelector("#env-btn-concluir");
+    assert.match(await page.locator("#env-situacao").innerText(), /Aguardando nota/);
+    await page.click("#env-btn-concluir");
+    await page.waitForFunction(() => /nota fiscal/.test(document.getElementById("env-status").textContent));
+    await page.fill("#env-nf-concluir", "35161");
+    await page.click("#env-btn-concluir");
+    await page.waitForFunction(() => /Situação: Concluído/.test(document.getElementById("env-situacao").textContent));
+    assert.strictEqual(S.roms.find(r => r.id === rLanca2.id).nota_fiscal, "35161");
+    // Excluir envio: só planejados, depois geral com EXCLUIR
+    await page.click(".env-voltar[data-voltar='detalhe']");
+    await page.waitForSelector("#env-detalhe:not([hidden])");
+    await page.click("#env-btn-excluir-envio");
+    await page.fill("#env-excluir-motivo", "cliente adiou");
+    await page.click("#env-btn-excluir-planejados");
+    await page.waitForFunction(() => /excluído\(s\)/.test(document.getElementById("env-status").textContent));
+    const planejados = S.exclusoes[0].n;
+    assert.ok(planejados >= 1 && S.roms.find(r => r.id === rLanca2.id).status === "concluido", "só os planejados saem");
+    await page.click("#env-btn-excluir-envio");
+    await page.fill("#env-excluir-motivo", "cancelado");
+    await page.click("#env-btn-excluir-geral");
+    await page.waitForFunction(() => /EXCLUIR/.test(document.getElementById("env-status").textContent));
+    await page.fill("#env-excluir-confirmo", "excluir");
+    await page.click("#env-btn-excluir-geral");
+    await page.waitForFunction(() => /Envio excluído/.test(document.getElementById("env-status").textContent));
+    assert.ok(S.roms.every(r => r.status === "excluido"));
+    console.log("ok - status: conferido → aguardando nota → concluído (NF); excluir envio só planejados / geral com EXCLUIR");
 
     // E) Cadastros
     await page.evaluate(() => showScreen("cadastros"));
@@ -241,8 +289,8 @@ const servidor = http.createServer((req, res) => {
     await page.fill("#cad-f-peso_kg", "3150");
     await page.click("#cad-btn-salvar");
     await page.waitForFunction(() => /Salvo/.test(document.getElementById("cad-status").textContent));
-    assert.strictEqual(S.cad[0].tabela, "pecas"); assert.strictEqual(S.cad[0].dados.peso_kg, "3150");
-    assert.strictEqual(S.cad[0].dados.codigo, "C051023611111");
+    const salvoPeca = S.cad.find(x => x.tabela === "pecas"); assert.strictEqual(salvoPeca.dados.peso_kg, "3150");
+    assert.strictEqual(salvoPeca.dados.codigo, "C051023611111");
     console.log("ok - Cadastros: lista com pendência, edita e salva a peça");
 
     // Clientes: novo pelo CNPJ (BrasilAPI), obra com a construtora como pai, excluir

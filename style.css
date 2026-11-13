@@ -1,4 +1,4 @@
-/* style_v6.0.2.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.1.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -467,8 +467,13 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
   padding: 8px 10px; background: #f6f7f9; color: #222; font-size: 13px; line-height: 1.4; cursor: pointer; }
 .env-card:hover{ border-color: #1e5eff; }
 .env-sub{ color: #667; font-size: 12px; }
-.env-st-confirmado, .env-st-nf_solicitada{ border-left: 5px solid #1f9d55; }
-.env-st-carregando{ border-left: 5px solid #e0a100; }
+.env-st-iniciado{ border-left: 5px solid #e0a100; }
+.env-st-conferido, .env-st-aguardando_nota{ border-left: 5px solid #378add; }
+.env-st-concluido{ border-left: 5px solid #1f9d55; }
+.env-st-sinistrado{ border-left: 5px solid #b3261e; }
+.env-st-excluido, .env-envio-excluido{ border-left: 5px solid #888; opacity: .6; }
+.env-envio-concluido{ border-left: 5px solid #1f9d55; }
+.env-status-rom{ font-weight: 700; padding-left: 8px; }
 .env-item-linha{ display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0;
   border-bottom: 1px solid #eee; font-size: 13px; }
 .env-qtd{ width: 70px !important; flex: 0 0 auto; margin: 0 !important; }

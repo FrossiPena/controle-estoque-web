@@ -1,3 +1,4 @@
+// romaneio v1.2 - status planejado/iniciado/conferido/aguardando_nota/concluido/sinistrado/excluido; excluir envio
 // romaneio v1.1 - clientes com CNPJ e obras (pai_id), motorista guarda as últimas placas, cad_excluir
 // romaneio v1.0 - Envio de grua: configurador, romaneios por veículo, conferência por QR, fotos e cadastros.
 // Só no Supabase (sem Google). POST JSON { modo, ... } com Authorization: Bearer <token do Supabase Auth>;
@@ -8,7 +9,7 @@ import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import { montarLista, distribuirVeiculos, chaveCodigo } from "../_shared/configurador.mjs";
 
-const VERSION = "romaneio-v1.1";
+const VERSION = "romaneio-v1.2";
 const TZ = "America/Sao_Paulo";
 const BUCKET = "romaneios";
 const ORIGENS = [/^https:\/\/frossipena\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -128,12 +129,35 @@ async function lidosPorCodigo(tx: Tx, romaneioId: number) {
   return Object.fromEntries(rows.map(r => [r.codigo, r.n]));
 }
 
-async function romaneioAberto(tx: Tx, id: number) {
+// Romaneio em carregamento (planejado/iniciado): só nele se lê, move, fotografa, edita e confirma
+const EM_CARGA = ["planejado", "iniciado"];
+const ROTULO: Record<string, string> = { planejado: "planejado", iniciado: "iniciado", conferido: "conferido",
+  aguardando_nota: "aguardando nota", concluido: "concluído", sinistrado: "sinistrado", excluido: "excluído" };
+async function romaneioPorId(tx: Tx, id: number) {
   const [r] = await tx`select r.*, e.gt, e.modelo, e.status as envio_status from estoque.romaneios r
                        join estoque.envios e on e.id = r.envio_id where r.id = ${id} for update of r`;
   if (!r) throw new Recusa("romaneio não encontrado");
-  if (["confirmado", "nf_solicitada"].includes(r.status)) throw new Recusa(`romaneio ${r.numero} já foi confirmado`);
   return r;
+}
+async function romaneioAberto(tx: Tx, id: number) {
+  const r = await romaneioPorId(tx, id);
+  if (!EM_CARGA.includes(r.status)) throw new Recusa(`romaneio ${r.numero} está ${ROTULO[r.status] || r.status}`);
+  return r;
+}
+// Envio: concluído quando todos os romaneios (fora os excluídos) estão concluídos/sinistrados; excluído se todos excluídos
+async function atualizarEnvio(tx: Tx, envioId: number) {
+  const rs = await tx`select status from estoque.romaneios where envio_id = ${envioId}`;
+  const validos = rs.filter(r => r.status !== "excluido");
+  const status = !validos.length && rs.length ? "excluido"
+    : validos.length && validos.every(r => ["concluido", "sinistrado"].includes(r.status)) ? "concluido" : "aberto";
+  await tx`update estoque.envios set status = ${status} where id = ${envioId}`;
+  return status;
+}
+async function mudarStatus(tx: Tx, c: Ctx, r: Record<string, unknown>, novo: string, motivo: string | null, extra = {}) {
+  await tx`update estoque.romaneios set ${tx({ status: novo, status_motivo: motivo, status_por: c.usuario,
+           status_em: new Date(), ...extra })} where id = ${r.id as number}`;
+  await log(tx, c, "romaneio " + (ROTULO[novo] || novo), r.envio_id as number, r.id as number, { de: r.status, motivo, ...extra });
+  return await atualizarEnvio(tx, r.envio_id as number);
 }
 
 async function somarItem(tx: Tx, romaneioId: number, codigo: string, delta: number, base: Record<string, unknown>, origem: string) {
@@ -245,9 +269,10 @@ const MODOS: Record<string, Modo> = {
     const rows = await tx`
       select e.id, e.cliente, e.obra, e.gt, e.modelo, e.status, e.criado_em, e.criado_por,
              (select count(*)::int from estoque.romaneios r where r.envio_id = e.id) as romaneios,
-             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status in ('confirmado','nf_solicitada')) as confirmados,
+             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status <> 'excluido') as validos,
+             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status in ('conferido','aguardando_nota','concluido')) as confirmados,
              (select coalesce(sum(i.qtd), 0)::int from estoque.romaneio_itens i join estoque.romaneios r on r.id = i.romaneio_id
-               where r.envio_id = e.id) as previstas,
+               where r.envio_id = e.id and r.status <> 'excluido') as previstas,
              (select count(*)::int from estoque.romaneio_leituras l where l.envio_id = e.id) as lidas
       from estoque.envios e where ${todos} or e.status = 'aberto' order by e.cliente, e.gt, e.criado_em desc`;
     return { envios: rows };
@@ -326,7 +351,7 @@ const MODOS: Record<string, Modo> = {
                                      (select count(*)::int from estoque.romaneio_leituras l
                                        where l.romaneio_id = i.romaneio_id and l.codigo = i.codigo) as lidos
                               from estoque.romaneio_itens i join estoque.romaneios x on x.id = i.romaneio_id
-                              where x.envio_id = ${r.envio_id} and x.id <> ${r.id} and x.status in ('planejado','carregando')
+                              where x.envio_id = ${r.envio_id} and x.id <> ${r.id} and x.status in ('planejado','iniciado')
                                 and i.codigo = any(${candidatos}) order by x.numero`;
       const comSaldo = outros.find(o => Number(o.qtd) > o.lidos);
       if (comSaldo) {
@@ -350,7 +375,7 @@ const MODOS: Record<string, Modo> = {
       envio_id: r.envio_id, romaneio_id: r.id, codigo9: c9, id_individual: id, codigo: codigoPrevisto,
       manual: p.manual === true, fora_do_plano: fora, usuario: c.usuario, obs: peca.viaAjuste ? "via AJUSTE" : null,
     })}`;
-    if (r.status === "planejado") await tx`update estoque.romaneios set status = 'carregando' where id = ${r.id}`;
+    if (r.status === "planejado") await tx`update estoque.romaneios set status = 'iniciado' where id = ${r.id}`;
     if (fora || peca.gt && normNome(peca.gt) !== normNome(r.gt)) {
       await log(tx, c, "leitura com CONFIRMO", r.envio_id, r.id, { codigo9: c9, id, codigo: peca.codigo, gt: peca.gt, fora });
     }
@@ -458,23 +483,65 @@ const MODOS: Record<string, Modo> = {
     const [{ n }] = await tx`select count(*)::int n from estoque.romaneio_fotos where romaneio_id = ${r.id}`;
     if (!n) pendentes.push("ao menos uma foto");
     if (pendentes.length) throw new Recusa("falta preencher: " + pendentes.join(", "), { pendentes });
-    await tx`update estoque.romaneios set status = 'confirmado', confirmado_por = ${c.usuario}, confirmado_em = now(),
-             justificativa = ${justificativa || null} where id = ${r.id}`;
-    await log(tx, c, "romaneio confirmado", r.envio_id, r.id, { faltas, justificativa });
-    const [{ abertos }] = await tx`select count(*)::int abertos from estoque.romaneios
-                                   where envio_id = ${r.envio_id} and status in ('planejado','carregando')`;
-    if (!abertos) await tx`update estoque.envios set status = 'concluido' where id = ${r.envio_id}`;
-    return { faltas, envioConcluido: !abertos };
+    await mudarStatus(tx, c, r, "conferido", justificativa || null,
+      { confirmado_por: c.usuario, confirmado_em: new Date(), justificativa: justificativa || null });
+    return { faltas };
   },
 
+  // Conferido → aguardando nota (pedido à contabilidade; o e-mail vem depois)
+  async solicitar_nota(tx, p, c) {
+    exigir(c, "operacional", "expedicao");
+    const r = await romaneioPorId(tx, int(p.id));
+    if (r.status !== "conferido") throw new Recusa(`só um romaneio conferido pede nota (este está ${ROTULO[r.status]})`);
+    await mudarStatus(tx, c, r, "aguardando_nota", null);
+    return {};
+  },
+
+  // Aguardando nota → concluído, com o número da nota
+  async concluir(tx, p, c) {
+    exigir(c, "operacional", "expedicao");
+    const r = await romaneioPorId(tx, int(p.id));
+    if (r.status !== "aguardando_nota") throw new Recusa(`só conclui romaneio aguardando nota (este está ${ROTULO[r.status]})`);
+    const nf = txt(p.nota_fiscal) || txt(r.nota_fiscal);
+    if (!nf) throw new Recusa("informe o número da nota fiscal");
+    const envio = await mudarStatus(tx, c, r, "concluido", null, { nota_fiscal: nf });
+    return { envioConcluido: envio === "concluido" };
+  },
+
+  async sinistrar(tx, p, c) {
+    exigir(c, "expedicao");
+    const r = await romaneioPorId(tx, int(p.id));
+    if (r.status === "excluido") throw new Recusa("romaneio excluído");
+    const motivo = txt(p.motivo);
+    if (!motivo) throw new Recusa("descreva o sinistro");
+    await mudarStatus(tx, c, r, "sinistrado", motivo);
+    return {};
+  },
+
+  // Volta para iniciado (admin): corrige confirmação, sinistro ou exclusão por engano
   async reabrir(tx, p, c) {
     exigir(c, "admin");
-    const [r] = await tx`update estoque.romaneios set status = 'carregando', confirmado_por = null, confirmado_em = null
-                         where id = ${int(p.id)} returning envio_id`;
-    if (!r) throw new Recusa("romaneio não encontrado");
-    await tx`update estoque.envios set status = 'aberto' where id = ${r.envio_id}`;
-    await log(tx, c, "romaneio reaberto", r.envio_id, int(p.id));
+    const r = await romaneioPorId(tx, int(p.id));
+    if (EM_CARGA.includes(r.status)) throw new Recusa("romaneio já está aberto");
+    await mudarStatus(tx, c, r, "iniciado", txt(p.motivo) || "reaberto", { confirmado_por: null, confirmado_em: null });
     return {};
+  },
+
+  // Excluir envio: escopo "planejados" (só os que nem começaram) ou "geral" (todos, qualquer status; pede EXCLUIR).
+  // Não apaga: marca excluído com motivo (leituras, fotos e histórico ficam).
+  async excluir_envio(tx, p, c) {
+    exigir(c, "expedicao");
+    const envioId = int(p.envio_id), escopo = txt(p.escopo), motivo = txt(p.motivo);
+    if (!["planejados", "geral"].includes(escopo)) throw new Recusa("escolha: só planejados ou exclusão geral");
+    if (!motivo) throw new Recusa("informe o motivo da exclusão");
+    if (escopo === "geral" && txt(p.confirmo).toUpperCase() !== "EXCLUIR") throw new Recusa("digite EXCLUIR para a exclusão geral", { pedeConfirmo: true });
+    const alvo = await tx`select r.*, e.gt from estoque.romaneios r join estoque.envios e on e.id = r.envio_id
+                          where r.envio_id = ${envioId} and r.status <> 'excluido'
+                            and (${escopo} = 'geral' or r.status = 'planejado') for update of r`;
+    if (!alvo.length) throw new Recusa(escopo === "planejados" ? "não há romaneio planejado neste envio" : "não há romaneio para excluir");
+    let envio = "aberto";
+    for (const r of alvo) envio = await mudarStatus(tx, c, r, "excluido", `${escopo === "geral" ? "exclusão geral" : "planejados"}: ${motivo}`);
+    return { excluidos: alvo.length, envio };
   },
 
   async cad_listar(tx, p, c) {
@@ -551,7 +618,7 @@ const MODOS: Record<string, Modo> = {
   },
 };
 
-const MODOS_GRAVACAO = ["cad_excluir", "salvar_envio", "ler_peca", "desfazer_leitura", "mover_item", "editar_romaneio", "novo_romaneio",
+const MODOS_GRAVACAO = ["solicitar_nota", "concluir", "sinistrar", "excluir_envio", "cad_excluir", "salvar_envio", "ler_peca", "desfazer_leitura", "mover_item", "editar_romaneio", "novo_romaneio",
                         "foto_upload", "foto_registrar", "confirmar", "reabrir", "cad_salvar"];
 
 Deno.serve(async (req) => {

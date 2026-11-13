@@ -1,13 +1,13 @@
-<!-- index.html - v6.0.2 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.1.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.0.2" />
+  <meta name="app-version" content="v6.1.0" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.0.2" />
+  <link rel="stylesheet" href="style.css?v=6.1.0" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -486,7 +486,7 @@
         <h2>Envio de grua</h2>
         <div class="env-acoes">
           <button type="button" id="env-btn-novo">+ Novo envio</button>
-          <label class="env-check"><input type="checkbox" id="env-todos" /> mostrar concluídos</label>
+          <label class="env-check"><input type="checkbox" id="env-todos" /> mostrar concluídos e excluídos</label>
         </div>
         <div id="env-envios"></div>
       </div>
@@ -498,11 +498,20 @@
         <label class="campo-label" for="env-cliente">Cliente</label>
         <input type="text" id="env-cliente" list="env-clientes" autocomplete="off" />
         <datalist id="env-clientes"></datalist>
+        <label class="campo-label" for="env-obra">Obra</label>
+        <div class="env-acoes">
+          <select id="env-obra"></select>
+          <button type="button" id="env-btn-add-obra">+ Adicionar obra</button>
+        </div>
+        <div id="env-nova-obra" class="env-leitura" hidden>
+          <label class="campo-label" for="env-nova-obra-nome">Nome da obra</label>
+          <input type="text" id="env-nova-obra-nome" />
+          <label class="campo-label" for="env-nova-obra-endereco">Endereço da obra</label>
+          <input type="text" id="env-nova-obra-endereco" />
+          <div class="env-acoes"><button type="button" id="env-btn-salvar-obra">Cadastrar obra neste cliente</button></div>
+        </div>
         <label class="campo-label" for="env-endereco">Endereço de envio</label>
         <input type="text" id="env-endereco" />
-        <label class="campo-label" for="env-obra">Obra</label>
-        <input type="text" id="env-obra" />
-        <label class="env-check"><input type="checkbox" id="env-obra-cliente" /> a obra é o próprio cliente</label>
         <label class="campo-label" for="env-gt">GT</label>
         <select id="env-gt"></select>
         <label class="campo-label" for="env-modelo">Modelo</label>
@@ -541,6 +550,20 @@
         <div class="env-acoes">
           <select id="env-novo-veiculo"></select>
           <button type="button" id="env-btn-novo-veiculo">+ Veículo</button>
+        </div>
+        <div class="env-acoes"><button type="button" id="env-btn-excluir-envio" class="env-perigo">Excluir envio</button></div>
+        <div id="env-excluir" class="env-leitura" hidden>
+          <p>Os romaneios ficam marcados como <b>excluídos</b> (leituras, fotos e histórico continuam guardados).</p>
+          <label class="campo-label" for="env-excluir-motivo">Motivo</label>
+          <input type="text" id="env-excluir-motivo" />
+          <div class="env-acoes">
+            <button type="button" id="env-btn-excluir-planejados">Excluir só os planejados</button>
+          </div>
+          <label class="campo-label" for="env-excluir-confirmo">Exclusão geral (todos, mesmo iniciados ou concluídos): digite EXCLUIR</label>
+          <div class="env-acoes">
+            <input type="text" id="env-excluir-confirmo" placeholder="EXCLUIR" />
+            <button type="button" id="env-btn-excluir-geral" class="env-perigo">Exclusão geral</button>
+          </div>
         </div>
       </div>
 
@@ -598,11 +621,16 @@
         <textarea id="env-obs" rows="2"></textarea>
         <div class="env-acoes"><button type="button" id="env-btn-dados">Salvar dados</button></div>
 
-        <h3>Confirmar romaneio</h3>
+        <h3>Situação</h3>
+        <div id="env-situacao"></div>
+
+        <div id="env-confirmar-sec">
+        <h3>Confirmar romaneio (conferido)</h3>
         <p class="secao-info">Exige peças conferidas (ou justificativa), placa do cavalo, motorista, transportadora e ao menos uma foto.</p>
         <label class="campo-label" for="env-just">Justificativa (se faltar ou sobrar peça)</label>
         <textarea id="env-just" rows="2"></textarea>
         <div class="env-acoes"><button type="button" id="env-btn-confirmar">Confirmar romaneio</button></div>
+        </div>
 
         <h3>Leituras</h3>
         <div id="env-leituras"></div>
@@ -668,7 +696,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.0.2"></script>
+  <script src="app.js?v=6.1.0"></script>
 </body>
 </html>
 
