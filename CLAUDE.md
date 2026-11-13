@@ -83,6 +83,9 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   (importa o `_shared/configurador.mjs`; papéis em `usuario_papeis`: admin/cadastro/expedicao/operacional/consulta;
   usuário sem papel não usa). Mudou a função: suba `VERSION` e confira `…/functions/v1/romaneio?modo=diag`.
   Ajuste feito na conferência vai para a AJUSTE do Google; só chega ao Supabase com o espelho ligado.
+  Status do romaneio: planejado → iniciado (1ª leitura) → conferido (Confirmar) → aguardando_nota → concluido (NF);
+  sinistrado/excluido com motivo (nada se apaga); reabrir = admin. Envio: aberto/concluido/excluido (atualizarEnvio).
+  Clientes: obra = cliente com pai_id (pode ter CNPJ próprio, SPE); no novo envio a Obra é a lista do cliente + obras.
 - Falhas: `estoque.espelho_log`. Próximas fases (consultas lendo do Supabase; corte) em `migracao/README.md` e no plano.
 
 ## Frontend
