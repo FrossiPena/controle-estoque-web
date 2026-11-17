@@ -112,8 +112,10 @@ Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)
 - **ajuste**: `abrirAjuste` → `onGtAjuste` → `renderPosicoesAjuste` → `escolherPosicaoAjuste` (IDs de fábrica /
   inclusão) → `renderCompatAjuste` (outro desenho?) → `atualizarBotaoAjuste` → `gravarAjuste`. Estado em `AJ`.
 - **envio** (6) Envio de grua, só Supabase, função `romaneio` via `romPost(modo, dados)`): painéis `env-lista` →
-  `env-novo` (`novoEnvio`, `envModeloMudou`/`envBaseMudou`, `gerarPrevia` → `renderPrevia`, `salvarEnvio`) → `env-detalhe`
-  (`abrirEnvioDetalhe`) → `env-romaneio` (`abrirRomaneio`/`recarregarRomaneio`, `lerPecaEnvio` — o QR lido nesta tela vai
+  `env-novo` (`novoEnvio`, `envModeloMudou`/`envBaseMudou`, `gerarPrevia` → `renderPrevia` → `renderVeiculosPrevia`,
+  `salvarEnvio`; arrastar peça entre veículos = `iniciarArrasto`/`linhaPecaMovel` (pointer events, alça ⠿, 1 unidade;
+  "Mover para…" escolhe a qtd), `moverNaPrevia` recalcula com `ENV.previa.pecas`, veículo vazio não é salvo) → `env-detalhe`
+  (`abrirEnvioDetalhe`; "vista detalhada" = `renderEnvioDetalhado`, `envio` com `detalhe:true`, arrastar chama `mover_item`) → `env-romaneio` (`abrirRomaneio`/`recarregarRomaneio`, `lerPecaEnvio` — o QR lido nesta tela vai
   para cá em `processarQRCode` —, mover, fotos `enviarFotoRomaneio`, `salvarDadosRomaneio`, `confirmarRomaneio`); estado `ENV`,
   papéis `envPode`. Peça não encontrada → "Registrar ajuste" (`abrirAjuste`, `AJ.voltar = "envio"`).
 - **cadastros** (7): `abrirCadastros`, `carregarCadastro`, `editarCadastro`, `salvarCadastro` (`cad_listar`/`cad_salvar`); estado `CAD`.

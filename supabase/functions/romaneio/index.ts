@@ -1,3 +1,4 @@
+// romaneio v1.4 - prévia devolve peso/comprimento por peça (arrastar entre veículos); envio com detalhe=true traz as peças de cada romaneio
 // romaneio v1.3 - motorista pelo CPF (único; duplicidade recusada), celulares; transportadora com contato e e-mail da NF
 // romaneio v1.2 - status planejado/iniciado/conferido/aguardando_nota/concluido/sinistrado/excluido; excluir envio
 // romaneio v1.1 - clientes com CNPJ e obras (pai_id), motorista guarda as últimas placas, cad_excluir
@@ -10,7 +11,7 @@ import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import { montarLista, distribuirVeiculos, chaveCodigo } from "../_shared/configurador.mjs";
 
-const VERSION = "romaneio-v1.3";
+const VERSION = "romaneio-v1.4";
 const TZ = "America/Sao_Paulo";
 const BUCKET = "romaneios";
 const ORIGENS = [/^https:\/\/frossipena\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -234,7 +235,9 @@ const MODOS: Record<string, Modo> = {
     itens = itens.map(i => ({ ...i, qtd: Number(i.qtd) || 0 })).filter(i => i.qtd > 0);
     const pecas = await pecasPorCodigo(tx, itens.map(i => txt(i.codigo)));
     const d = distribuirVeiculos(itens, pecas, await frota(tx));
-    return { cfg, itens, avisos, veiculos: d.veiculos, avisosDistribuicao: d.avisos };
+    // Peso e comprimento por peça: a tela recalcula os veículos quando o usuário arrasta uma peça
+    const medidas = Object.fromEntries(Object.entries(pecas).map(([k, v]) => [k, { comp_m: v.comp_m, peso_kg: v.peso_kg }]));
+    return { cfg, itens, avisos, veiculos: d.veiculos, avisosDistribuicao: d.avisos, pecas: medidas, frota: await frota(tx) };
   },
 
   async salvar_envio(tx, p, c) {
@@ -297,7 +300,21 @@ const MODOS: Record<string, Modo> = {
              (select coalesce(sum(i.qtd * coalesce(pc.comp_m, 0)), 0) from estoque.romaneio_itens i
                left join estoque.pecas pc on pc.codigo = i.codigo where i.romaneio_id = r.id and not i.forro and not i.filha) as comp_m
       from estoque.romaneios r where r.envio_id = ${id} order by r.numero`;
-    return { envio: e, romaneios: romaneios.map(r => ({ ...r, peso_kg: Number(r.peso_kg), comp_m: Number(r.comp_m) })) };
+    // Vista detalhada: as peças de cada romaneio (com o que já foi lido)
+    const itensPor: Record<number, unknown[]> = {};
+    if (p.detalhe === true) {
+      const itens = await tx`select i.romaneio_id, i.codigo, i.codigo_exibicao, i.descricao, i.qtd, i.forro, i.filha,
+                                    pc.peso_kg, pc.comp_m,
+                                    (select count(*)::int from estoque.romaneio_leituras l
+                                      where l.romaneio_id = i.romaneio_id and l.codigo = i.codigo) as lidos
+                             from estoque.romaneio_itens i join estoque.romaneios r on r.id = i.romaneio_id
+                             left join estoque.pecas pc on pc.codigo = i.codigo
+                             where r.envio_id = ${id} and i.qtd > 0 order by i.forro, i.filha, i.id`;
+      itens.forEach(i => (itensPor[i.romaneio_id] = itensPor[i.romaneio_id] || []).push({ ...i, qtd: Number(i.qtd),
+        peso_kg: i.peso_kg == null ? null : Number(i.peso_kg), comp_m: i.comp_m == null ? null : Number(i.comp_m) }));
+    }
+    return { envio: e, romaneios: romaneios.map(r => ({ ...r, peso_kg: Number(r.peso_kg), comp_m: Number(r.comp_m),
+                                                       itens: itensPor[r.id] || undefined })) };
   },
 
   async romaneio(tx, p) {

@@ -50,7 +50,8 @@ const servidor = http.createServer((req, res) => {
       const cfg = { ...p.cfg, lanca_m: Number(p.cfg.lanca_m), altura_m: p.cfg.altura_m == null ? null : Number(p.cfg.altura_m) };
       const r = p.itens ? { itens: p.itens.filter(i => i.qtd > 0), avisos: [] } : montarLista(cfg, { relacaoItens, regras, pecas });
       const d = distribuirVeiculos(r.itens, pecas, frota);
-      return { cfg, itens: r.itens, avisos: r.avisos, veiculos: d.veiculos, avisosDistribuicao: d.avisos };
+      const medidas = Object.fromEntries(Object.entries(pecas).map(([k, v]) => [k, { comp_m: v.comp_m, peso_kg: v.peso_kg }]));
+      return { cfg, itens: r.itens, avisos: r.avisos, veiculos: d.veiculos, avisosDistribuicao: d.avisos, pecas: medidas, frota };
     },
     salvar_envio: (p) => {
       const id = S.envios.length + 1;
@@ -65,7 +66,19 @@ const servidor = http.createServer((req, res) => {
       previstas: 0, lidas: S.leituras.length })) }),
     envio: (p) => ({ envio: S.envios.find(e => e.id === p.id), romaneios: S.roms.filter(r => r.envio_id === p.id).map(r => ({
       id: r.id, numero: r.numero, veiculo: r.veiculo, status: r.status, previstas: r.itens.reduce((s, i) => s + i.qtd, 0),
-      lidas: S.leituras.filter(l => l.romaneio_id === r.id).length, peso_kg: 0, comp_m: 0 })) }),
+      lidas: S.leituras.filter(l => l.romaneio_id === r.id).length, peso_kg: 0, comp_m: 0,
+      itens: p.detalhe ? r.itens.filter(i => i.qtd > 0).map(i => ({ ...i, lidos: lidos(r.id, i.codigo) })) : undefined })) }),
+    mover_item: (p) => {
+      const de = S.roms.find(x => x.id === p.de), para = S.roms.find(x => x.id === p.para);
+      if (![de, para].every(r => r && ["planejado", "iniciado"].includes(r.status))) return { ok: false, error: "romaneio não está em carga" };
+      const it = de.itens.find(i => i.codigo === p.codigo), livre = it ? it.qtd - lidos(de.id, p.codigo) : 0;
+      if (!(p.qtd > 0 && p.qtd <= livre)) return { ok: false, error: `dá para mover até ${livre}` };
+      it.qtd -= p.qtd;
+      const ja = para.itens.find(i => i.codigo === p.codigo);
+      if (ja) ja.qtd += p.qtd; else para.itens.push({ ...it, qtd: p.qtd, origem: "movido" });
+      S.movidos = (S.movidos || 0) + 1;
+      return {};
+    },
     romaneio: (p) => {
       const r = S.roms.find(x => x.id === p.id), e = S.envios.find(x => x.id === r.envio_id);
       return { romaneio: { ...r, cliente: e.cliente, gt: e.gt, modelo: e.modelo },
@@ -216,8 +229,41 @@ const servidor = http.createServer((req, res) => {
     await page.fill(`#env-qtd-${idx}`, "2");
     await page.click("#env-btn-redistribuir");
     await page.waitForFunction(n => document.querySelectorAll("#env-veiculos .eq-item").length === n, nVeic);
+    // Arrastar (mouse): 1 TORRE do veículo 1 para o veículo da LANÇA 2 → passa de 12 m e fica vermelho
+    const arrastar = async (de, para) => {
+      const a = await de.boundingBox(), b = await para.boundingBox();
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(a.x + 40, a.y + 40, { steps: 3 });
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+      await page.mouse.up();
+    };
+    const veic = k => page.locator("#env-veiculos .env-veiculo").nth(k);
+    const kLanca2 = await page.evaluate(() => ENV.previa.veiculos.findIndex(v => v.itens.some(i => i.codigo === "C051001621111")));
+    const torresAntes = await page.evaluate(() => ENV.previa.veiculos[0].itens.find(i => i.codigo === "C028047332111").qtd);
+    assert.strictEqual(torresAntes, 2);
+    await arrastar(veic(0).locator(".env-alca").first(), veic(kLanca2));
+    await page.waitForFunction(k => ENV.previa.veiculos[k].itens.some(i => i.codigo === "C028047332111"), kLanca2);
+    assert.strictEqual(await page.evaluate(() => ENV.previa.veiculos[0].itens.find(i => i.codigo === "C028047332111").qtd), 1, "arrastar move 1 unidade");
+    assert.strictEqual(await page.evaluate(k => ENV.previa.veiculos[k].comp_usado, kLanca2), 14.14, "comprimento recalculado");
+    assert.match(await veic(kLanca2).getAttribute("class"), /env-excedido/);
+    assert.match(await veic(kLanca2).innerText(), /passou do comprimento útil/);
+    assert.ok(await page.isVisible("#env-previa-editada"));
+    // "Mover para…" (sem arrastar): devolve a torre ao veículo 1
+    const linhaTorre = veic(kLanca2).locator(".env-peca-linha", { hasText: "TORRE" });
+    await linhaTorre.locator("text=Mover para…").click();
+    await linhaTorre.locator(".env-mover select").selectOption("0");
+    await linhaTorre.locator(".env-mover button").click();
+    await page.waitForFunction(() => ENV.previa.veiculos[0].itens.find(i => i.codigo === "C028047332111").qtd === 2);
+    assert.doesNotMatch(await veic(kLanca2).getAttribute("class"), /env-excedido/);
+    // Veículo vazio: aparece, mas não é salvo
+    await page.selectOption("#env-previa-tipo", "Prancha");
+    await page.click("#env-btn-previa-veiculo");
+    assert.strictEqual(await page.locator("#env-veiculos .env-veiculo").count(), nVeic + 1);
+    console.log("ok - prévia: arrastar 1 unidade (mouse), recálculo e aviso de excesso, Mover para…, veículo vazio");
     await page.click("#env-btn-salvar");
     await page.waitForSelector("#env-detalhe:not([hidden])");
+    assert.strictEqual(S.ultimoEnvio.veiculos.length, nVeic, "veículo vazio não vai para o envio");
     assert.match(await texto("#env-det-titulo"), /S11D – GT-10/);
     assert.strictEqual(await page.locator("#env-romaneios .env-card").count(), nVeic);
     assert.strictEqual(S.ultimoEnvio.obra, "Mina Norte"); assert.strictEqual(S.ultimoEnvio.cliente_id, 2);
@@ -230,6 +276,20 @@ const servidor = http.createServer((req, res) => {
     assert.ok(await page.isHidden("#env-previa"));
     await page.evaluate(() => abrirEnvioDetalhe(1));
     await page.waitForSelector("#env-detalhe:not([hidden])");
+    // Vista detalhada: peças de cada romaneio; arrastar grava com mover_item
+    await page.check("#env-detalhada");
+    await page.waitForSelector("#env-romaneios .env-veiculo");
+    assert.strictEqual(await page.locator("#env-romaneios .env-veiculo").count(), nVeic);
+    const rom = k => page.locator("#env-romaneios .env-veiculo").nth(k);
+    await arrastar(rom(0).locator(".env-alca").first(), rom(1));
+    await page.waitForFunction(() => /movida/.test(document.getElementById("env-status").textContent));
+    assert.strictEqual(S.movidos, 1);
+    assert.strictEqual(S.roms[0].itens.find(i => i.codigo === "C028047332111").qtd, 1);
+    assert.strictEqual(S.roms[1].itens.find(i => i.codigo === "C028047332111").qtd, 1);
+    await page.waitForFunction(() => /1\/1 × |0\/1 × /.test(document.querySelectorAll("#env-romaneios .env-veiculo")[1].innerText));
+    await page.uncheck("#env-detalhada");
+    await page.waitForSelector("#env-romaneios .env-card");
+    console.log("ok - envio salvo: vista detalhada com arrastar (mover_item) e volta ao resumo");
     console.log(`ok - novo envio: cliente com endereço, GT → modelo, prévia (${nVeic} veículos), redistribuir, salvar`);
 
     // C) Romaneio com a LANÇA 2 (romaneio 2 ou 3) e leituras

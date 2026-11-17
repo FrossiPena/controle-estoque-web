@@ -1,3 +1,5 @@
+// v6.3.0 - Arrastar peças entre veículos (mouse e toque; "Mover para…"): na prévia recalcula comprimento/peso e
+//          avisa excesso, "+ Veículo vazio"; no envio salvo, "Vista detalhada" com as peças e arrastar (mover_item)
 // v6.2.2 - "+ Novo envio" abre o formulário em branco (não traz cliente/endereço do envio anterior)
 // v6.2.1 - Confirmar romaneio: lista do que falta abaixo do botão; recusa da regra não pinta o sinal de ERRO
 // v6.2.0 - Motorista pelo CPF (primeiro campo, máscara, sugestões, sem duplicidade), celulares; transportadora com
@@ -62,7 +64,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.2.2";
+const APP_VERSION = "v6.3.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2927,6 +2929,7 @@ async function gerarPrevia(redistribuir) {
   const j = await romPost("previa", dados);
   if (!j.ok) { envStatus("Erro: " + j.error); return; }
   ENV.previa = j;
+  ENV.previaEditada = false;
   envStatus("");
   renderPrevia();
 }
@@ -2946,15 +2949,129 @@ function renderPrevia() {
     linha.appendChild(q);
     it.appendChild(linha);
   });
-  const vs = envEl("env-veiculos"); vs.replaceChildren();
-  p.veiculos.forEach(v => {
-    const card = eqEl("div", "eq-item");
+  const sel = envEl("env-previa-tipo"); sel.replaceChildren();
+  (p.frota || ENV.opcoes?.frota || []).forEach(v => envOpcao(sel, v.nome));
+  renderVeiculosPrevia();
+}
+
+/* ---------- Arrastar peças entre veículos (mouse e toque: segurar a alça ⠿ e soltar no outro veículo) ---------- */
+function iniciarArrasto(ev, rotulo, onSoltar) {
+  ev.preventDefault();
+  const fantasma = eqEl("div", "env-fantasma", rotulo);
+  document.body.appendChild(fantasma);
+  let alvo = null;
+  const mover = e => {
+    fantasma.style.left = (e.clientX + 10) + "px";
+    fantasma.style.top = (e.clientY + 10) + "px";
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const novo = el && el.closest ? el.closest("[data-alvo]") : null;
+    if (novo !== alvo) { alvo?.classList.remove("env-alvo-ativo"); alvo = novo; alvo?.classList.add("env-alvo-ativo"); }
+    if (e.clientY < 60) window.scrollBy(0, -18); else if (e.clientY > window.innerHeight - 60) window.scrollBy(0, 18);
+  };
+  const fim = e => {
+    window.removeEventListener("pointermove", mover);
+    window.removeEventListener("pointerup", fim);
+    window.removeEventListener("pointercancel", fim);
+    fantasma.remove();
+    alvo?.classList.remove("env-alvo-ativo");
+    if (e.type === "pointerup" && alvo) onSoltar(alvo);
+  };
+  mover(ev);
+  window.addEventListener("pointermove", mover);
+  window.addEventListener("pointerup", fim);
+  window.addEventListener("pointercancel", fim);
+}
+
+// Linha de peça com alça de arrastar e "Mover para…" (destinos: [{valor, rotulo}]; maxQtd = quanto pode sair)
+function linhaPecaMovel(texto, maxQtd, destinos, onMover, cls) {
+  const linha = eqEl("div", "env-peca-linha" + (cls ? " " + cls : ""));
+  const pode = maxQtd > 0 && destinos.length;
+  const alca = eqEl("span", "env-alca", pode ? "⠿" : "");
+  alca.title = "Segure e arraste para outro veículo";
+  linha.append(alca, eqEl("span", "env-peca-texto", texto));
+  if (!pode) return linha;
+  alca.addEventListener("pointerdown", ev => iniciarArrasto(ev, texto, alvo => {
+    const para = alvo.dataset.alvo;
+    if (destinos.some(d => String(d.valor) === para)) onMover(para, 1);
+  }));
+  const b = eqEl("button", "env-mini", "Mover para…"); b.type = "button";
+  b.addEventListener("click", () => {
+    const aberto = linha.querySelector(".env-mover"); if (aberto) { aberto.remove(); return; }
+    const box = eqEl("div", "env-mover");
+    const q = document.createElement("input"); q.type = "number"; q.min = "1"; q.max = String(maxQtd); q.value = "1"; q.className = "env-qtd";
+    const dest = document.createElement("select");
+    destinos.forEach(d => envOpcao(dest, d.valor, d.rotulo));
+    const ok = eqEl("button", "", "Mover"); ok.type = "button";
+    ok.addEventListener("click", () => {
+      const n = Math.max(1, Math.min(maxQtd, Number(q.value) || 1));
+      onMover(dest.value, n);
+    });
+    box.append(eqEl("span", "env-sub", `até ${maxQtd}`), q, dest, ok);
+    linha.appendChild(box);
+  });
+  linha.appendChild(b);
+  return linha;
+}
+
+// Prévia: recalcula comprimento (em cima / forro) e peso de um veículo a partir das peças dele
+function recalcVeiculoPrevia(v) {
+  const med = ENV.previa.pecas || {};
+  v.comp_usado = 0; v.forro_usado = 0; v.peso_kg = 0;
+  v.itens.forEach(x => {
+    const m = med[x.codigo] || {};
+    const comp = (Number(m.comp_m) || 0) * x.qtd, peso = (Number(m.peso_kg) || 0) * x.qtd;
+    if (x.forro) v.forro_usado += comp; else if (!x.filha) v.comp_usado += comp;
+    v.peso_kg += peso;
+  });
+}
+const chaveItemPrevia = x => `${x.codigo}|${!!x.forro}|${!!x.filha}`;
+
+function moverNaPrevia(de, chave, para, qtd) {
+  const vs = ENV.previa.veiculos, origem = vs[de], destino = vs[para];
+  const it = origem.itens.find(x => chaveItemPrevia(x) === chave);
+  if (!it || !destino || de === para) return;
+  const n = Math.min(qtd, it.qtd);
+  it.qtd -= n;
+  const ja = destino.itens.find(x => chaveItemPrevia(x) === chave);
+  if (ja) ja.qtd += n; else destino.itens.push({ ...it, qtd: n });
+  origem.itens = origem.itens.filter(x => x.qtd > 0);
+  recalcVeiculoPrevia(origem); recalcVeiculoPrevia(destino);
+  ENV.previaEditada = true;
+  envStatus(`${n} × ${it.descricao || it.codigoExib}: veículo ${origem.n} → veículo ${destino.n}.`);
+  renderVeiculosPrevia();
+}
+
+function renderVeiculosPrevia() {
+  const p = ENV.previa, vs = envEl("env-veiculos"); vs.replaceChildren();
+  envEl("env-previa-editada").hidden = !ENV.previaEditada;
+  p.veiculos.forEach((v, i) => {
+    const excComp = v.comp_util_m && (v.comp_usado > v.comp_util_m + 1e-6 || v.forro_usado > v.comp_util_m + 1e-6);
+    const excPeso = v.carga_max_kg && v.peso_kg > v.carga_max_kg + 1e-6;
+    const card = eqEl("div", "eq-item env-veiculo" + (excComp || excPeso ? " env-excedido" : ""));
+    card.dataset.alvo = String(i);
     const comp = v.comp_util_m ? `${fmtNum(v.comp_usado, 2)}/${fmtNum(v.comp_util_m, 2)} m` : `${fmtNum(v.comp_usado, 2)} m`;
     const peso = v.carga_max_kg ? `${fmtNum(v.peso_kg, 0)}/${fmtNum(v.carga_max_kg, 0)} kg` : `${fmtNum(v.peso_kg, 0)} kg`;
     card.appendChild(eqEl("div", "eq-item-titulo", `${v.n}) ${v.tipo} · ${comp} · forro ${fmtNum(v.forro_usado, 2)} m · ${peso}`));
-    v.itens.forEach(x => card.appendChild(eqEl("div", "", `${x.qtd} × ${x.descricao || x.codigoExib}${x.forro ? " (forro)" : ""}${x.filha ? " (junto do pai)" : ""}`)));
+    if (excComp || excPeso) card.appendChild(eqEl("div", "eq-aviso",
+      [excComp ? "passou do comprimento útil" : "", excPeso ? "passou da carga máxima" : ""].filter(Boolean).join(" e ")));
+    if (!v.itens.length) card.appendChild(eqEl("div", "env-sub", "Vazio: arraste peças para cá (veículo vazio não é salvo)."));
+    const destinos = p.veiculos.map((o, k) => ({ valor: k, rotulo: `→ veículo ${o.n} (${o.tipo})` })).filter(d => d.valor !== i);
+    v.itens.forEach(x => {
+      const texto = `${x.qtd} × ${x.descricao || x.codigoExib}${x.forro ? " (forro)" : ""}${x.filha ? " (junto do pai)" : ""}`;
+      card.appendChild(linhaPecaMovel(texto, x.qtd, destinos, (para, n) => moverNaPrevia(i, chaveItemPrevia(x), Number(para), n)));
+    });
     vs.appendChild(card);
   });
+}
+
+function addVeiculoPrevia() {
+  const p = ENV.previa; if (!p) return;
+  const tipo = envEl("env-previa-tipo").value;
+  const t = (p.frota || ENV.opcoes?.frota || []).find(v => v.nome === tipo) || {};
+  p.veiculos.push({ n: p.veiculos.length + 1, tipo, comp_util_m: t.comp_util_m ?? null, carga_max_kg: t.carga_max_kg ?? null,
+                    comp_usado: 0, forro_usado: 0, peso_kg: 0, itens: [] });
+  ENV.previaEditada = true;
+  renderVeiculosPrevia();
 }
 
 // Clientes do envio (sem as obras: elas aparecem no campo Obra depois de escolher o cliente)
@@ -3049,8 +3166,9 @@ async function salvarEnvio() {
   const btn = envEl("env-btn-salvar"); btn.disabled = true;
   envStatus("Salvando o envio…");
   const cli = envClienteEscolhido(), obra = envObraEscolhida();
+  const veiculos = ENV.previa.veiculos.filter(v => v.itens.length).map((v, k) => ({ ...v, n: k + 1 }));
   const j = await romPost("salvar_envio", { cfg: ENV.previa.cfg, cliente, cliente_id: (obra || cli || {}).id ?? null,
-    endereco_envio: envEl("env-endereco").value, obra: obra ? obra.nome : cliente, veiculos: ENV.previa.veiculos });
+    endereco_envio: envEl("env-endereco").value, obra: obra ? obra.nome : cliente, veiculos });
   btn.disabled = false;
   if (!j.ok) { envStatus("Não salvo: " + j.error); return; }
   envStatus(`Envio #${j.id} salvo com ${j.romaneios} romaneio(s).`);
@@ -3062,7 +3180,8 @@ async function abrirEnvioDetalhe(id) {
   ENV.envioId = id;
   envView("detalhe");
   const box = envEl("env-romaneios"); box.replaceChildren(eqEl("p", "secao-info", "Carregando…"));
-  const j = await romPost("envio", { id });
+  const detalhada = envEl("env-detalhada").checked;
+  const j = await romPost("envio", { id, detalhe: detalhada });
   box.replaceChildren();
   if (!j.ok) { box.appendChild(eqEl("p", "eq-aviso", "Erro: " + j.error)); return; }
   const e = j.envio;
@@ -3073,7 +3192,8 @@ async function abrirEnvioDetalhe(id) {
   ENV.envio = j;
   envEl("env-excluir").hidden = true;
   envEl("env-btn-excluir-envio").hidden = !envPode("expedicao") || e.status === "excluido";
-  j.romaneios.forEach(r => {
+  if (detalhada) { renderEnvioDetalhado(j); }
+  else j.romaneios.forEach(r => {
     const card = eqEl("button", "env-card env-st-" + r.status);
     card.type = "button";
     card.appendChild(eqEl("div", "eq-item-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"}`));
@@ -3085,6 +3205,37 @@ async function abrirEnvioDetalhe(id) {
   const sel = envEl("env-novo-veiculo"); sel.replaceChildren();
   (ENV.opcoes?.frota || []).forEach(v => envOpcao(sel, v.nome));
   envEl("env-btn-novo-veiculo").disabled = !envPode("expedicao", "operacional");
+}
+
+// Vista detalhada do envio salvo: peças de cada romaneio; arrastar grava na hora (mover_item: só o não lido,
+// só entre romaneios em carga — planejado/iniciado). Tocar no título abre o romaneio.
+function renderEnvioDetalhado(j) {
+  const box = envEl("env-romaneios");
+  const podeMover = envPode("operacional", "expedicao");
+  const abertos = j.romaneios.filter(r => ROM_EM_CARGA.includes(r.status));
+  j.romaneios.forEach(r => {
+    const emCarga = ROM_EM_CARGA.includes(r.status);
+    const card = eqEl("div", "eq-item env-veiculo env-st-" + r.status);
+    if (emCarga) card.dataset.alvo = String(r.id);
+    const tit = eqEl("button", "env-card-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"} · ${ROM_STATUS[r.status] || r.status}`);
+    tit.type = "button";
+    tit.addEventListener("click", () => abrirRomaneio(r.id));
+    card.appendChild(tit);
+    card.appendChild(eqEl("div", "env-sub", `peças ${r.lidas}/${r.previstas} · ${fmtNum(r.comp_m, 2)} m · ${fmtNum(r.peso_kg, 0)} kg`));
+    const destinos = abertos.filter(o => o.id !== r.id).map(o => ({ valor: o.id, rotulo: `→ romaneio ${o.numero}${o.veiculo ? " (" + o.veiculo + ")" : ""}` }));
+    (r.itens || []).forEach(x => {
+      const livres = emCarga && podeMover ? Math.max(0, x.qtd - x.lidos) : 0;
+      const texto = `${x.lidos}/${x.qtd} × ${x.descricao || x.codigo_exibicao}${x.forro ? " (forro)" : ""}${x.filha ? " (junto do pai)" : ""}`;
+      card.appendChild(linhaPecaMovel(texto, livres, destinos, async (para, n) => {
+        const k = await romPost("mover_item", { de: r.id, para: Number(para), codigo: x.codigo, qtd: n });
+        envStatus(k.ok ? `${n} × ${x.descricao || x.codigo_exibicao} movida(s).` : "Não movida: " + k.error);
+        abrirEnvioDetalhe(ENV.envioId);
+      }, x.lidos >= x.qtd ? "env-peca-ok" : ""));
+    });
+    if (!(r.itens || []).length) card.appendChild(eqEl("div", "env-sub", "Sem peças."));
+    box.appendChild(card);
+  });
+  if (podeMover) box.prepend(eqEl("p", "secao-info", "Segure ⠿ e arraste a peça para outro romaneio (planejado/iniciado). Só o que ainda não foi lido se move."));
 }
 
 async function novoVeiculoEnvio() {
@@ -3677,6 +3828,12 @@ window.addEventListener("DOMContentLoaded", () => {
   envEl("env-btn-redistribuir")?.addEventListener("click", () => gerarPrevia(true));
   envEl("env-btn-salvar")?.addEventListener("click", salvarEnvio);
   envEl("env-btn-novo-veiculo")?.addEventListener("click", novoVeiculoEnvio);
+  envEl("env-btn-previa-veiculo")?.addEventListener("click", addVeiculoPrevia);
+  try { envEl("env-detalhada").checked = localStorage.getItem("ce_env_detalhada") === "1"; } catch {}
+  envEl("env-detalhada")?.addEventListener("change", e => {
+    try { localStorage.setItem("ce_env_detalhada", e.target.checked ? "1" : "0"); } catch {}
+    if (ENV.envioId) abrirEnvioDetalhe(ENV.envioId);
+  });
   envEl("env-btn-excluir-envio")?.addEventListener("click", () => { envEl("env-excluir").hidden = !envEl("env-excluir").hidden; });
   envEl("env-btn-excluir-planejados")?.addEventListener("click", () => excluirEnvio("planejados"));
   envEl("env-btn-excluir-geral")?.addEventListener("click", () => excluirEnvio("geral"));

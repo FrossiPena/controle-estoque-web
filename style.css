@@ -1,4 +1,4 @@
-/* style_v6.2.2.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.3.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -509,3 +509,12 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .env-hint{ border: 1px solid #efc56b; background: #fff8e6; color: #633806; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 .env-hint p{ margin: 2px 0; font-weight: 700; }
 .env-hint ul{ margin: 2px 0; padding-left: 18px; }
+.env-peca-linha{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px dashed #e3e6eb; }
+.env-peca-texto{ flex: 1; min-width: 140px; }
+.env-peca-ok .env-peca-texto{ color: #1f7a3f; }
+.env-alca{ cursor: grab; touch-action: none; user-select: none; font-size: 18px; color: #667; padding: 0 6px; min-width: 22px; text-align: center; }
+.env-veiculo.env-alvo-ativo{ outline: 3px dashed #1e5eff; background: #eef3ff; }
+.env-excedido{ border-color: #b3261e; background: #fdecea; }
+.env-fantasma{ position: fixed; z-index: 1000; pointer-events: none; background: #1e5eff; color: #fff; padding: 4px 8px;
+  border-radius: 6px; font-size: 13px; max-width: 70vw; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+.env-card-titulo{ background: transparent; color: #0c447c; border: 0; padding: 0; font-weight: 700; text-align: left; cursor: pointer; }
