@@ -193,6 +193,10 @@ const servidor = http.createServer((req, res) => {
     await pc.goto(url);
     const visiveis = await pc.$$eval(".nav button", bs => bs.filter(b => !b.hidden).map(b => b.dataset.screen));
     assert.deepStrictEqual(visiveis, ["consulta", "equipamento", "acessorios"]);
+    // Grupos do menu sem tela visível (Registrar, Suporte) somem; cartão do usuário mostra o perfil
+    const grupos = await pc.$$eval(".nav-grupo", gs => gs.filter(g => !g.hidden).map(g => g.querySelector(".nav-titulo").textContent));
+    assert.deepStrictEqual(grupos, ["Consultar"]);
+    assert.strictEqual(await pc.textContent("#user-perfil"), "Somente consulta");
     await pc.evaluate(() => showScreen("equipamento"));
     await pc.waitForFunction(() => document.getElementById("eq-grua").options.length > 1);
     await pc.selectOption("#eq-grua", "280 EC-H 12 Litronic");

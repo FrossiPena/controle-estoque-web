@@ -1,13 +1,13 @@
-<!-- index.html - v6.4.0 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.5.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.4.0" />
+  <meta name="app-version" content="v6.5.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.4.0" />
+  <link rel="stylesheet" href="style.css?v=6.5.1" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -32,28 +32,63 @@
     </div>
   </header>
 
+  <!-- Ícones do menu (SVG embutido, sem biblioteca externa) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="ic-caixa" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+      <symbol id="ic-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 20h2M20 14v2"/></symbol>
+      <symbol id="ic-lista" viewBox="0 0 24 24"><path d="M4 6h12M4 12h6M4 18h6"/><circle cx="16" cy="15" r="3"/><path d="M18.2 17.2L21 20"/></symbol>
+      <symbol id="ic-grua" viewBox="0 0 24 24"><path d="M7 21V4M4 21h6M7 4l13 3M3 7h17M7 4L3 7M17 7v6M15.5 13h3M7 11l3-4M7 15l3-4"/></symbol>
+      <symbol id="ic-chave" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+      <symbol id="ic-prancheta" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3h6v2M12 10v6M9 13h6"/></symbol>
+      <symbol id="ic-etiqueta" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/></symbol>
+      <symbol id="ic-caminhao" viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></symbol>
+      <symbol id="ic-pessoas" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3 3 0 0 1 0 6M18 14c2 .7 3 2.8 3 6"/></symbol>
+      <symbol id="ic-inseto" viewBox="0 0 24 24"><rect x="8" y="7" width="8" height="13" rx="4"/><path d="M12 11v9M9 4l1.5 2.5M15 4l-1.5 2.5M4 10h4M16 10h4M4 16h4M16 16h4"/></symbol>
+      <symbol id="ic-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="ic-sair" viewBox="0 0 24 24"><path d="M14 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3M10 12h11M18 9l3 3-3 3"/></symbol>
+    </defs>
+  </svg>
+
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <strong>Menu</strong>
-      <button class="close-btn" id="btnClose" type="button" aria-label="Fechar menu">✕</button>
+      <span class="menu-logo"><svg class="ico" aria-hidden="true"><use href="#ic-caixa"/></svg></span>
+      <div class="menu-marca">
+        <strong>Controle de Estoque</strong>
+        <span id="menu-versao"></span>
+      </div>
+      <button class="close-btn" id="btnClose" type="button" aria-label="Fechar menu"><svg class="ico" aria-hidden="true"><use href="#ic-fechar"/></svg></button>
     </div>
 
     <nav class="nav">
-      <button type="button" data-screen="consulta" class="active">1) Consulta ítem</button>
-      <button type="button" data-screen="cadastro">2) Cadastro</button>
-      <button type="button" data-screen="cadacess">2.1) Cadastro Acessórios</button>
-      <button type="button" data-screen="inventario">3) Consultar Inventário</button>
-      <button type="button" data-screen="equipamento">4) Equipamento</button>
-      <button type="button" data-screen="acessorios">5) Acessórios</button>
-      <button type="button" data-screen="envio">6) Envio de grua</button>
-      <button type="button" data-screen="cadastros">7) Cadastros</button>
-      <button type="button" data-screen="debug">8) Debug</button>
+      <div class="nav-grupo">
+        <div class="nav-titulo">Consultar</div>
+        <button type="button" data-screen="consulta" class="active"><svg class="ico" aria-hidden="true"><use href="#ic-qr"/></svg>Consulta ítem</button>
+        <button type="button" data-screen="inventario"><svg class="ico" aria-hidden="true"><use href="#ic-lista"/></svg>Consultar Inventário</button>
+        <button type="button" data-screen="equipamento"><svg class="ico" aria-hidden="true"><use href="#ic-grua"/></svg>Equipamento</button>
+        <button type="button" data-screen="acessorios"><svg class="ico" aria-hidden="true"><use href="#ic-chave"/></svg>Acessórios</button>
+      </div>
+      <div class="nav-grupo">
+        <div class="nav-titulo">Registrar</div>
+        <button type="button" data-screen="cadastro"><svg class="ico" aria-hidden="true"><use href="#ic-prancheta"/></svg>Cadastro</button>
+        <button type="button" data-screen="cadacess"><svg class="ico" aria-hidden="true"><use href="#ic-etiqueta"/></svg>Cadastro Acessórios</button>
+        <button type="button" data-screen="envio"><svg class="ico" aria-hidden="true"><use href="#ic-caminhao"/></svg>Envio de grua</button>
+        <button type="button" data-screen="cadastros"><svg class="ico" aria-hidden="true"><use href="#ic-pessoas"/></svg>Cadastros</button>
+      </div>
+      <div class="nav-grupo">
+        <div class="nav-titulo">Suporte</div>
+        <button type="button" data-screen="debug"><svg class="ico" aria-hidden="true"><use href="#ic-inseto"/></svg>Debug</button>
+      </div>
     </nav>
 
     <div class="sidebar-footer">
-      <div id="user-info" class="user-info"></div>
-      <button type="button" id="btn-sair">Sair</button>
+      <span class="user-avatar" id="user-avatar" aria-hidden="true"></span>
+      <div id="user-info" class="user-info">
+        <strong id="user-nome"></strong>
+        <span id="user-perfil"></span>
+      </div>
+      <button type="button" id="btn-sair"><svg class="ico" aria-hidden="true"><use href="#ic-sair"/></svg>Sair</button>
     </div>
   </aside>
   <div class="overlay" id="overlay"></div>
@@ -603,10 +638,8 @@
         </div>
 
         <h3>Peças</h3>
-        <div class="env-rom-pecas">
-          <div id="env-rom-itens"></div>
-          <aside id="env-limbo" class="env-limbo-box" hidden></aside>
-        </div>
+        <p id="env-limbo-aviso" class="env-limbo-aviso" hidden></p>
+        <div id="env-rom-itens"></div>
 
         <h3>Fotos</h3>
         <input type="file" id="env-foto" accept="image/*" capture="environment" />
@@ -652,6 +685,12 @@
         <h3>Leituras</h3>
         <div id="env-leituras"></div>
         <details class="env-hist"><summary>Histórico</summary><div id="env-historico"></div></details>
+
+        <div id="env-limbo-sec" hidden>
+          <h3>Itens não apropriados a carreta alguma</h3>
+          <p class="secao-info">Peças tiradas de uma carreta deste envio e ainda sem destino (limbo).</p>
+          <div id="env-limbo"></div>
+        </div>
       </div>
     </section>
 
@@ -714,7 +753,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.4.0"></script>
+  <script src="app.js?v=6.5.1"></script>
 </body>
 </html>
 

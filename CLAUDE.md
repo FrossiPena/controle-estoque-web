@@ -87,7 +87,8 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
   sinistrado/excluido com motivo (nada se apaga); reabrir = admin.
   Limbo = romaneio `numero = 0` do envio (criado por `mover_item` com `para:"limbo"`): peças tiradas de uma carreta sem destino;
   não é veículo (não lê, foto, edita nem confirma), fica fora das contagens de veículos e o envio não conclui com peça nele.
-  Tela da carreta: quadro "Itens não apropriados a carreta alguma" (`renderLimboRomaneio`, "Trazer para esta carreta"). Envio: aberto/concluido/excluido (atualizarEnvio).
+  Tela da carreta: seção no fim "Itens não apropriados a carreta alguma" (`renderLimboRomaneio`, "Trazer para esta carreta"),
+  com aviso acima das peças que rola até ela. Envio: aberto/concluido/excluido (atualizarEnvio).
   Clientes: obra = cliente com pai_id (pode ter CNPJ próprio, SPE); no novo envio a Obra é a lista do cliente + obras.
 - Falhas: `estoque.espelho_log`. Próximas fases (consultas lendo do Supabase; corte) em `migracao/README.md` e no plano.
 

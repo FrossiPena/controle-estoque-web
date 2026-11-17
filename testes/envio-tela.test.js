@@ -303,16 +303,18 @@ const servidor = http.createServer((req, res) => {
     await page.locator("#env-romaneios .env-card").nth(rLanca2.numero - 1).click();
     await page.waitForSelector("#env-romaneio:not([hidden])");
     // Limbo: tira a LANÇA 2 da carreta sem destino e traz de volta pelo quadro "Itens não apropriados…"
-    assert.ok(await page.isHidden("#env-limbo"));
+    assert.ok(await page.isHidden("#env-limbo-sec"));
     const cardL2 = page.locator("#env-rom-itens .eq-item", { hasText: "LANÇA 2" });
     await cardL2.locator(".env-mover select").selectOption("limbo");
     await cardL2.locator(".env-mover button").click();
-    await page.waitForSelector("#env-limbo:not([hidden])");
-    assert.match(await page.locator("#env-limbo").innerText(), /Itens não apropriados a carreta alguma:[\s\S]*1 × LANÇA 2/);
+    await page.waitForSelector("#env-limbo-sec:not([hidden])");
+    assert.match(await page.locator("#env-limbo-aviso").innerText(), /1 peça\(s\) deste envio sem carreta/);
+    assert.match(await page.locator("#env-limbo-sec").innerText(), /Itens não apropriados a carreta alguma[\s\S]*1 × LANÇA 2/);
     assert.strictEqual(S.paraLimbo, 1);
     assert.strictEqual(S.roms.find(r => r.numero === 0).itens.find(i => i.codigo === "C051001621111").qtd, 1);
     await page.click("#env-limbo >> text=Trazer para esta carreta");
-    await page.waitForSelector("#env-limbo", { state: "hidden" });
+    await page.waitForSelector("#env-limbo-sec", { state: "hidden" });
+    assert.ok(await page.isHidden("#env-limbo-aviso"));
     assert.strictEqual(S.roms.find(r => r.id === rLanca2.id).itens.find(i => i.codigo === "C051001621111").qtd, 1);
     console.log("ok - limbo: mover para nenhuma carreta, quadro na tela da carreta e trazer de volta");
     const ler = async (c9, id) => { await page.fill("#env-c9", c9); await page.fill("#env-id", id); await page.click("#env-btn-registrar");

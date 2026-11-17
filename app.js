@@ -1,3 +1,6 @@
+// v6.5.1 - Limbo numa seção no fim da tela da carreta (largura toda), com aviso acima das peças que leva até ela
+// v6.5.0 - Menu lateral redesenhado: cabeçalho com marca e versão, ícones no lugar dos números, grupos
+//          (Consultar/Registrar/Suporte; grupo sem tela visível some), tela ativa destacada, cartão do usuário
 // v6.4.0 - Limbo (carreta 0): peça tirada de uma carreta sem destino; "→ nenhuma carreta (limbo)" no Mover, quadro
 //          "Itens não apropriados a carreta alguma" na tela da carreta (Trazer para esta carreta), alvo na vista detalhada
 // v6.3.0 - Arrastar peças entre veículos (mouse e toque; "Mover para…"): na prévia recalcula comprimento/peso e
@@ -66,7 +69,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.4.0";
+const APP_VERSION = "v6.5.1";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -245,12 +248,19 @@ function ehUsuarioConsulta() {
 }
 
 function atualizarUsuarioUI() {
-  const el = document.getElementById("user-info");
-  if (el) el.textContent = (AUTH.user ? `Usuário: ${AUTH.user} · ` : "") + APP_VERSION;
   const soConsulta = ehUsuarioConsulta();
+  const setTxt = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+  setTxt("menu-versao", APP_VERSION);
+  setTxt("user-nome", AUTH.user || "—");
+  setTxt("user-perfil", !AUTH.user ? "" : soConsulta ? "Somente consulta" : "Acesso completo");
+  setTxt("user-avatar", (String(AUTH.user || "").trim()[0] || "?").toUpperCase());
   const telasConsulta = ["consulta", "equipamento", "acessorios"];
   document.querySelectorAll(".nav button").forEach(btn => {
     btn.hidden = soConsulta && !telasConsulta.includes(btn.dataset.screen);
+  });
+  // Grupo do menu sem nenhuma tela visível some junto (título incluído)
+  document.querySelectorAll(".nav-grupo").forEach(g => {
+    g.hidden = !g.querySelector("button:not([hidden])");
   });
   if (soConsulta && !telasConsulta.includes(CURRENT_SCREEN)) showScreen("consulta");
 }
@@ -3275,16 +3285,27 @@ async function abrirRomaneio(id) {
 }
 
 // Quadro do limbo na tela da carreta: peças do envio sem carreta, com "Trazer para esta carreta"
+// Seção no fim da tela (largura toda) + aviso curto acima das peças que leva até ela
 function renderLimboRomaneio(j, soLeitura) {
-  const box = envEl("env-limbo"); if (!box) return;
+  const sec = envEl("env-limbo-sec"), box = envEl("env-limbo"), aviso = envEl("env-limbo-aviso");
+  if (!sec || !box) return;
   box.replaceChildren();
   const itens = (j.limbo && j.limbo.itens) || [];
-  box.hidden = !itens.length;
-  if (!itens.length) return;
-  box.appendChild(eqEl("p", "env-limbo-titulo", "Itens não apropriados a carreta alguma:"));
-  const ul = document.createElement("ul");
+  const total = itens.reduce((s, x) => s + x.qtd, 0);
+  sec.hidden = !itens.length;
+  if (aviso) {
+    aviso.hidden = !itens.length;
+    aviso.replaceChildren();
+    if (itens.length) {
+      const a = eqEl("button", "env-link", `${total} peça(s) deste envio sem carreta (limbo) ↓`); a.type = "button";
+      a.addEventListener("click", () => sec.scrollIntoView({ behavior: "smooth", block: "start" }));
+      aviso.appendChild(a);
+    }
+  }
   itens.forEach(x => {
-    const li = eqEl("li", "", `${x.qtd} × ${x.descricao || x.codigo_exibicao}`);
+    const li = eqEl("div", "eq-item env-limbo");
+    li.appendChild(eqEl("div", "eq-item-titulo", `${x.qtd} × ${x.descricao || x.codigo_exibicao}`));
+    li.appendChild(eqEl("div", "eq-item-codigo", x.codigo_exibicao || x.codigo));
     if (!soLeitura) {
       const b = eqEl("button", "env-mini", "Trazer para esta carreta"); b.type = "button";
       b.addEventListener("click", async () => {
@@ -3296,9 +3317,8 @@ function renderLimboRomaneio(j, soLeitura) {
       });
       li.appendChild(b);
     }
-    ul.appendChild(li);
+    box.appendChild(li);
   });
-  box.appendChild(ul);
 }
 
 async function recarregarRomaneio() {

@@ -1,4 +1,4 @@
-/* style_v6.4.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.5.1.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -56,59 +56,123 @@ body {
   top: 0;
   left: 0;
   height: 100vh;
+  height: 100dvh;
   width: var(--sidebar-w);
-  background: var(--navy);
+  max-width: 86vw;
+  background: linear-gradient(180deg, #0a2150 0%, var(--navy) 55%);
   box-shadow: var(--shadow);
   transform: translateX(-105%);
-  transition: transform .22s ease;
+  transition: transform .26s cubic-bezier(.2,.8,.2,1);
   z-index: 60;
-  padding: 14px;
+  padding: 16px 12px 12px;
   display:flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   color: #fff;
+  overflow-y: auto;
 }
 .sidebar.open{ transform: translateX(0); }
+
+/* Ícones do menu (sprite SVG no index.html) */
+.ico{
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .sidebar-header{
   display:flex;
   align-items:center;
-  justify-content: space-between;
-  padding: 8px 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.10);
-  margin-bottom: 8px;
+  gap: 10px;
+  padding: 0 4px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  margin-bottom: 6px;
 }
-.close-btn{
-  width: 38px;
-  height: 38px;
-  border: 0;
+.menu-logo{
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  background: rgba(255,255,255,.12);
-  color: #fff;
-  cursor:pointer;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  flex: none;
+  box-shadow: 0 6px 16px rgba(30,94,255,.35);
 }
+.menu-logo .ico{ width: 22px; height: 22px; }
+.menu-marca{ flex: 1; display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.menu-marca strong{ font-size: 15px; }
+.menu-marca span{ font-size: 12px; color: #9fb3d9; }
+.close-btn{
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #9fb3d9;
+  cursor:pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.close-btn:hover{ background: rgba(255,255,255,.08); color: #fff; }
 
 .nav{
   display:flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 4px;
+  gap: 4px;
+}
+.nav-grupo{ display: flex; flex-direction: column; gap: 2px; }
+.nav-grupo[hidden]{ display: none; }
+.nav-titulo{
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #6f86b3;
+  padding: 12px 12px 6px;
 }
 .nav button{
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   text-align: left;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.08);
-  color: #fff;
-  padding: 12px 12px;
-  border-radius: 14px;
+  border: 0;
+  background: transparent;
+  color: #d5def0;
+  padding: 11px 12px;
+  border-radius: 12px;
   cursor:pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background .15s ease, color .15s ease;
+}
+.nav button .ico{ color: #9fb3d9; transition: color .15s ease; }
+.nav button:hover{ background: rgba(255,255,255,.06); color: #fff; }
+.nav button.active{
+  background: rgba(30,94,255,.24);
+  box-shadow: inset 3px 0 0 #4d82ff;
+  color: #fff;
   font-weight: 700;
 }
-.nav button:hover{ background: rgba(255,255,255,.12); }
-.nav button.active{
-  border-color: rgba(255,255,255,.35);
-  background: rgba(255,255,255,.16);
+.nav button.active .ico{ color: #8fb0ff; }
+
+/* Ao abrir, os grupos entram com um leve deslize */
+.sidebar.open .nav-grupo{ animation: navEntra .32s cubic-bezier(.2,.8,.2,1) both; }
+.sidebar.open .nav-grupo:nth-child(2){ animation-delay: .04s; }
+.sidebar.open .nav-grupo:nth-child(3){ animation-delay: .08s; }
+@keyframes navEntra{
+  from{ opacity: 0; transform: translateX(-10px); }
+  to{ opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce){
+  .sidebar, .sidebar.open .nav-grupo{ transition: none; animation: none; }
 }
 
 /* Overlay */
@@ -330,15 +394,40 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 
 .sidebar-footer{
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,.10);
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
-.user-info{ font-size: 13px; opacity: .85; }
-#btn-sair{ background: rgba(255,255,255,.14); color: #fff; }
+.user-avatar{
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 15px;
+  flex: none;
+}
+.user-info{ flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; font-size: 13px; }
+.user-info strong{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-info span{ font-size: 12px; color: #9fb3d9; }
+#btn-sair{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+#btn-sair:hover{ background: rgba(255,255,255,.16); }
+#btn-sair .ico{ width: 16px; height: 16px; }
 
 /* Sinal de comunicação (topbar) */
 .net-status{
@@ -519,12 +608,6 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
   border-radius: 6px; font-size: 13px; max-width: 70vw; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
 .env-card-titulo{ background: transparent; color: #0c447c; border: 0; padding: 0; font-weight: 700; text-align: left; cursor: pointer; }
 .env-limbo{ border: 1px dashed #b07a00; background: #fff8e6; }
-.env-limbo-box{ border: 1px solid #efc56b; background: #fff8e6; color: #633806; border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 6px 0; }
-.env-limbo-box ul{ margin: 2px 0; padding-left: 18px; }
-.env-limbo-box li{ margin: 4px 0; }
-.env-limbo-box .env-mini{ margin-left: 6px; }
-.env-limbo-titulo{ margin: 2px 0; font-weight: 700; }
-@media (min-width: 900px){
-  .env-rom-pecas{ display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
-  .env-rom-pecas .env-limbo-box{ position: sticky; top: 8px; margin: 0; }
-}
+.env-limbo .env-mini{ margin-top: 6px; }
+.env-limbo-aviso{ margin: 4px 0; }
+.env-link{ background: transparent; border: 0; padding: 0; color: #8a5a00; font-weight: 700; text-decoration: underline; cursor: pointer; text-align: left; }
