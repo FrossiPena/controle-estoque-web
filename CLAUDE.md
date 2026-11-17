@@ -30,7 +30,7 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 - Toda chamada (exceto `diag`) exige `user`/`pass` validados contra a propriedade `USUARIOS`.
 - Usuário `consulta` (login genérico, cadastrado no `USUARIOS` dos dois scripts): só leitura. Os scripts recusam
   (`semPermissao:true`, sem deslogar) `compat_inserir`, `gravar_ajuste` (Consolidado), `log_mov`, `clear_lin` e
-  `upload_foto` (Inventário); o app (`ehUsuarioConsulta`) mostra só Consulta ítem, Equipamento e Acessórios, sem "+ Inserir compatível".
+  `upload_foto` (Inventário); o app (`ehUsuarioConsulta`) mostra só Consultar ítem, Equipamento e Acessórios, sem "+ Inserir compatível".
   Função nova que grave: incluir o modo em `MODOS_GRAVACAO` do script.
 - Planilhas lidas pelo script do Consolidado: aba `MachineCards Consolidado` (própria) e RELAÇÃO DE PRODUTOS
   (`RELACAO_SHEET_ID`: `Gruas lista`, `Validação` e uma aba por modelo de grua).
@@ -98,9 +98,9 @@ O rodapé mostra a versão; se `index.html` e `app.js` divergirem, ele avisa par
 
 ## Mapa do código
 Telas (`index.html`, `<section id="screen-…">`, trocadas por `showScreen(nome)`, que também para o leitor de QR):
-- **consulta** (Consulta ítem): QR (`iniciarLeitor`/`pararLeitor`/`processarQRCode`) → `consultarDados` (descrição,
+- **consulta** (Consultar ítem): QR (`iniciarLeitor`/`pararLeitor`/`processarQRCode`) → `consultarDados` (descrição,
   Código C, patrimônio pelo Consolidado) → `consultarUltimoInventario` (seção 4: fotos, GPS → `abrirLocalizacaoUlt`).
-- **cadastro**: `registrarMovimentacaoUI` → `log_mov` no Inventário; `carregarUltimoNumInv`; `verificarPecaCadastro`
+- **cadastro** (menu "Inventário ítem"): `registrarMovimentacaoUI` → `log_mov` no Inventário; `carregarUltimoNumInv`; `verificarPecaCadastro`
   (peça fora da MachineCards → botão "Criar ajuste" → tela ajuste); fotos `substituirFotoLinhaUI`/`uploadFotoParaLinha`
   (`reduzirFoto`: acima de Full HD reduz para 1080 no lado menor, JPEG 0,85; se falhar, envia o original).
 - **cadacess** (2.1 Cadastro Acessórios → Viga): `carregarCadAcess` (sequencial sugerido = maior SEQ/individual das chaves "V." do

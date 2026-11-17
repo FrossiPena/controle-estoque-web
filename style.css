@@ -1,4 +1,4 @@
-/* style_v6.5.1.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.5.2.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -154,6 +154,10 @@ body {
   transition: background .15s ease, color .15s ease;
 }
 .nav button .ico{ color: #9fb3d9; transition: color .15s ease; }
+/* Nome + complemento menor embaixo (ex.: "Envio de grua" / "romaneios") */
+.nav-txt{ display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.nav-txt small{ font-size: 12px; font-weight: 400; color: #8ea3cc; margin-top: 2px; }
+.nav button.active .nav-txt small{ color: #b9cbf2; }
 .nav button:hover{ background: rgba(255,255,255,.06); color: #fff; }
 .nav button.active{
   background: rgba(30,94,255,.24);

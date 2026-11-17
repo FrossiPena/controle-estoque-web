@@ -1,13 +1,13 @@
-<!-- index.html - v6.5.1 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
+<!-- index.html - v6.5.2 (Envio de grua + Cadastros + Login + Consulta ítem + Cadastro (+ Acessórios) com ajuste/inclusão/compatível + Inventário + Equipamento + Acessórios) -->
 <!-- Ao publicar nova versão, troque app-version e o ?v= de style.css e app.js (ver CLAUDE.md) -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="app-version" content="v6.5.1" />
+  <meta name="app-version" content="v6.5.2" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Controle de Estoque</title>
-  <link rel="stylesheet" href="style.css?v=6.5.1" />
+  <link rel="stylesheet" href="style.css?v=6.5.2" />
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
@@ -22,7 +22,7 @@
 
     <div class="brand">
       <div class="title">Controle de Estoque</div>
-      <div class="subtitle" id="screenName">Consulta ítem</div>
+      <div class="subtitle" id="screenName">Consultar ítem</div>
     </div>
 
     <!-- Sinal de comunicação com as planilhas -->
@@ -63,18 +63,18 @@
 
     <nav class="nav">
       <div class="nav-grupo">
-        <div class="nav-titulo">Consultar</div>
-        <button type="button" data-screen="consulta" class="active"><svg class="ico" aria-hidden="true"><use href="#ic-qr"/></svg>Consulta ítem</button>
-        <button type="button" data-screen="inventario"><svg class="ico" aria-hidden="true"><use href="#ic-lista"/></svg>Consultar Inventário</button>
+        <div class="nav-titulo">Inventário de peças</div>
+        <button type="button" data-screen="consulta" class="active"><svg class="ico" aria-hidden="true"><use href="#ic-qr"/></svg>Consultar ítem</button>
+        <button type="button" data-screen="inventario"><svg class="ico" aria-hidden="true"><use href="#ic-lista"/></svg>Consultar inventário</button>
+        <button type="button" data-screen="cadastro"><svg class="ico" aria-hidden="true"><use href="#ic-prancheta"/></svg>Inventário ítem</button>
+        <button type="button" data-screen="cadacess"><svg class="ico" aria-hidden="true"><use href="#ic-etiqueta"/></svg>Cadastro Acessórios</button>
         <button type="button" data-screen="equipamento"><svg class="ico" aria-hidden="true"><use href="#ic-grua"/></svg>Equipamento</button>
         <button type="button" data-screen="acessorios"><svg class="ico" aria-hidden="true"><use href="#ic-chave"/></svg>Acessórios</button>
       </div>
       <div class="nav-grupo">
-        <div class="nav-titulo">Registrar</div>
-        <button type="button" data-screen="cadastro"><svg class="ico" aria-hidden="true"><use href="#ic-prancheta"/></svg>Cadastro</button>
-        <button type="button" data-screen="cadacess"><svg class="ico" aria-hidden="true"><use href="#ic-etiqueta"/></svg>Cadastro Acessórios</button>
-        <button type="button" data-screen="envio"><svg class="ico" aria-hidden="true"><use href="#ic-caminhao"/></svg>Envio de grua</button>
-        <button type="button" data-screen="cadastros"><svg class="ico" aria-hidden="true"><use href="#ic-pessoas"/></svg>Cadastros</button>
+        <div class="nav-titulo">Remessa de grua</div>
+        <button type="button" data-screen="envio"><svg class="ico" aria-hidden="true"><use href="#ic-caminhao"/></svg><span class="nav-txt">Envio de grua<small>romaneios</small></span></button>
+        <button type="button" data-screen="cadastros"><svg class="ico" aria-hidden="true"><use href="#ic-pessoas"/></svg><span class="nav-txt">Cadastros<small>clientes, obras, transportadoras, etc.</small></span></button>
       </div>
       <div class="nav-grupo">
         <div class="nav-titulo">Suporte</div>
@@ -112,9 +112,9 @@
 
   <!-- Conteúdo / Frames -->
   <main class="main">
-    <!-- 1) Consulta ítem -->
+    <!-- Consultar ítem -->
     <section class="frame" id="screen-consulta">
-      <h2>Consulta ítem</h2>
+      <h2>Consultar ítem</h2>
 
       <!-- Seção 1: Leitura do QR Code -->
       <div class="secao">
@@ -238,11 +238,11 @@
       </div>
     </section>
 
-    <!-- 2) Cadastro -->
+    <!-- Inventário ítem (tela "cadastro": lançamento do inventário) -->
     <section class="frame" id="screen-cadastro" hidden>
-      <h2>Cadastro</h2>
+      <h2>Inventário ítem</h2>
 
-      <!-- Leitura do QR Code (mesma da Consulta ítem) -->
+      <!-- Leitura do QR Code (mesma da Consultar ítem) -->
       <div class="secao">
         <h3>Leitura do QR Code</h3>
         <p class="secao-info">
@@ -375,8 +375,8 @@
 
       <p class="vc-codigo" id="vc-codigo">V.?.?.?.?.?.?-?</p>
       <p class="secao-info" id="vc-msg"></p>
-      <button type="button" id="vc-usar" disabled>Usar no Cadastro →</button>
-      <p class="secao-info">O código e o individual vão para o Cadastro; lá você completa inventário, pátio, rua e andar e toca em Registrar.</p>
+      <button type="button" id="vc-usar" disabled>Usar no Inventário ítem →</button>
+      <p class="secao-info">O código e o individual vão para o Inventário ítem; lá você completa inventário, pátio, rua e andar e toca em Registrar.</p>
       </div>
     </section>
 
@@ -480,7 +480,7 @@
       <div id="eq-lista" class="eq-lista"></div>
     </section>
 
-    <!-- Ajuste de machine card (aberto a partir do Cadastro) -->
+    <!-- Ajuste de machine card (aberto a partir do Inventário ítem) -->
     <section class="frame" id="screen-ajuste" hidden>
       <h2>Ajuste de machine card</h2>
       <p class="secao-info">
@@ -507,12 +507,12 @@
 
       <div class="consulta-actions">
         <button type="button" id="aj-gravar" disabled>Gravar ajuste</button>
-        <button type="button" id="aj-voltar">Voltar ao Cadastro</button>
+        <button type="button" id="aj-voltar">Voltar ao Inventário ítem</button>
       </div>
       <p id="aj-status" class="secao-info"></p>
     </section>
 
-    <!-- 6) Envio de grua (Supabase) -->
+    <!-- Envio de grua / romaneios (Supabase) -->
     <section class="frame" id="screen-envio" hidden>
       <p id="env-status" class="secao-info"></p>
 
@@ -694,7 +694,7 @@
       </div>
     </section>
 
-    <!-- 7) Cadastros (Supabase) -->
+    <!-- Cadastros: clientes, obras, transportadoras… (Supabase) -->
     <section class="frame" id="screen-cadastros" hidden>
       <h2>Cadastros</h2>
       <button type="button" id="cad-voltar-envio" class="env-voltar" hidden>← Voltar ao novo envio</button>
@@ -753,7 +753,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6.5.1"></script>
+  <script src="app.js?v=6.5.2"></script>
 </body>
 </html>
 

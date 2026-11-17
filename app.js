@@ -1,3 +1,6 @@
+// v6.5.2 - Menu: grupos "Inventário de peças" (Consultar ítem, Consultar inventário, Inventário ítem = antiga
+//          Cadastro, Cadastro Acessórios, Equipamento, Acessórios) e "Remessa de grua" (Envio de grua/romaneios,
+//          Cadastros/clientes, obras, transportadoras); topo e textos usam os nomes novos
 // v6.5.1 - Limbo numa seção no fim da tela da carreta (largura toda), com aviso acima das peças que leva até ela
 // v6.5.0 - Menu lateral redesenhado: cabeçalho com marca e versão, ícones no lugar dos números, grupos
 //          (Consultar/Registrar/Suporte; grupo sem tela visível some), tela ativa destacada, cartão do usuário
@@ -69,7 +72,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.5.1";
+const APP_VERSION = "v6.5.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -127,8 +130,8 @@ function closeMenu() {
 
 function showScreen(key) {
   const map = {
-    consulta: { id: "screen-consulta", name: "Consulta ítem" },
-    cadastro: { id: "screen-cadastro", name: "Cadastro" },
+    consulta: { id: "screen-consulta", name: "Consultar ítem" },
+    cadastro: { id: "screen-cadastro", name: "Inventário ítem" },
     cadacess: { id: "screen-cadacess", name: "Cadastro Acessórios" },
     inventario: { id: "screen-inventario", name: "Consultar Inventário" },
     equipamento: { id: "screen-equipamento", name: "Equipamento" },
@@ -1382,7 +1385,7 @@ function renderVigas() {
     chip.type = "button";
     chip.className = "eq-id vg-id" + (sel.length ? (achados.length ? " eq-id-ok" : " eq-id-falta") : "");
     chip.textContent = `Individual ${v.id}`;
-    chip.title = "Abrir na Consulta ítem";
+    chip.title = "Abrir em Consultar ítem";
     chip.addEventListener("click", () => abrirConsultaPecaEq(v.codigo, v.id));
     ids.appendChild(chip);
     const invs = Object.keys(v.regs);
