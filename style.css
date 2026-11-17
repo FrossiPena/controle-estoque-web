@@ -1,4 +1,4 @@
-/* style_v6.3.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
+/* style_v6.4.0.css - Menu lateral + 4 telas + seções da Consulta ítem + login */
 
 :root{
   --bg: #1e5eff;          /* azul (fundo do site) */
@@ -518,3 +518,13 @@ input[readonly], textarea[readonly]{ background: #f6f7f9; }
 .env-fantasma{ position: fixed; z-index: 1000; pointer-events: none; background: #1e5eff; color: #fff; padding: 4px 8px;
   border-radius: 6px; font-size: 13px; max-width: 70vw; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
 .env-card-titulo{ background: transparent; color: #0c447c; border: 0; padding: 0; font-weight: 700; text-align: left; cursor: pointer; }
+.env-limbo{ border: 1px dashed #b07a00; background: #fff8e6; }
+.env-limbo-box{ border: 1px solid #efc56b; background: #fff8e6; color: #633806; border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 6px 0; }
+.env-limbo-box ul{ margin: 2px 0; padding-left: 18px; }
+.env-limbo-box li{ margin: 4px 0; }
+.env-limbo-box .env-mini{ margin-left: 6px; }
+.env-limbo-titulo{ margin: 2px 0; font-weight: 700; }
+@media (min-width: 900px){
+  .env-rom-pecas{ display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+  .env-rom-pecas .env-limbo-box{ position: sticky; top: 8px; margin: 0; }
+}

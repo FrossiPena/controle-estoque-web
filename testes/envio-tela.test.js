@@ -69,7 +69,11 @@ const servidor = http.createServer((req, res) => {
       lidas: S.leituras.filter(l => l.romaneio_id === r.id).length, peso_kg: 0, comp_m: 0,
       itens: p.detalhe ? r.itens.filter(i => i.qtd > 0).map(i => ({ ...i, lidos: lidos(r.id, i.codigo) })) : undefined })) }),
     mover_item: (p) => {
-      const de = S.roms.find(x => x.id === p.de), para = S.roms.find(x => x.id === p.para);
+      const de = S.roms.find(x => x.id === p.de);
+      if (p.para === "limbo" && !S.roms.some(x => x.envio_id === de.envio_id && x.numero === 0))
+        S.roms.push({ id: S.roms.length + 1, envio_id: de.envio_id, numero: 0, veiculo: null, status: "planejado", itens: [] });
+      const para = p.para === "limbo" ? S.roms.find(x => x.envio_id === de.envio_id && x.numero === 0) : S.roms.find(x => x.id === p.para);
+      S.paraLimbo = (S.paraLimbo || 0) + (p.para === "limbo" ? 1 : 0);
       if (![de, para].every(r => r && ["planejado", "iniciado"].includes(r.status))) return { ok: false, error: "romaneio não está em carga" };
       const it = de.itens.find(i => i.codigo === p.codigo), livre = it ? it.qtd - lidos(de.id, p.codigo) : 0;
       if (!(p.qtd > 0 && p.qtd <= livre)) return { ok: false, error: `dá para mover até ${livre}` };
@@ -84,7 +88,8 @@ const servidor = http.createServer((req, res) => {
       return { romaneio: { ...r, cliente: e.cliente, gt: e.gt, modelo: e.modelo },
         itens: r.itens.map(i => ({ ...i, lidos: lidos(r.id, i.codigo) })),
         leituras: S.leituras.filter(l => l.romaneio_id === r.id).map((l, k) => ({ id: k + 1, quando: "12/11 10:00", usuario: "real", ...l })),
-        fotos: S.fotoFake ? [{ id: 1, url: "data:," }] : [], outros: S.roms.filter(x => x.envio_id === r.envio_id && x.id !== r.id).map(x => ({ id: x.id, numero: x.numero, veiculo: x.veiculo, status: x.status })),
+        fotos: S.fotoFake ? [{ id: 1, url: "data:," }] : [], outros: S.roms.filter(x => x.envio_id === r.envio_id && x.id !== r.id && x.numero !== 0).map(x => ({ id: x.id, numero: x.numero, veiculo: x.veiculo, status: x.status })),
+        limbo: (lb => ({ id: lb ? lb.id : null, itens: lb ? lb.itens.filter(i => i.qtd > 0) : [] }))(S.roms.find(x => x.envio_id === r.envio_id && x.numero === 0 && x.id !== r.id)),
         historico: [] };
     },
     ler_peca: (p) => {
@@ -279,14 +284,15 @@ const servidor = http.createServer((req, res) => {
     // Vista detalhada: peças de cada romaneio; arrastar grava com mover_item
     await page.check("#env-detalhada");
     await page.waitForSelector("#env-romaneios .env-veiculo");
-    assert.strictEqual(await page.locator("#env-romaneios .env-veiculo").count(), nVeic);
-    const rom = k => page.locator("#env-romaneios .env-veiculo").nth(k);
+    assert.strictEqual(await page.locator("#env-romaneios .env-veiculo:not(.env-limbo)").count(), nVeic);
+    assert.match(await page.locator("#env-romaneios .env-limbo").innerText(), /Sem carreta \(limbo\)/, "limbo aparece como alvo");
+    const rom = k => page.locator("#env-romaneios .env-veiculo:not(.env-limbo)").nth(k);
     await arrastar(rom(0).locator(".env-alca").first(), rom(1));
     await page.waitForFunction(() => /movida/.test(document.getElementById("env-status").textContent));
     assert.strictEqual(S.movidos, 1);
     assert.strictEqual(S.roms[0].itens.find(i => i.codigo === "C028047332111").qtd, 1);
     assert.strictEqual(S.roms[1].itens.find(i => i.codigo === "C028047332111").qtd, 1);
-    await page.waitForFunction(() => /1\/1 × |0\/1 × /.test(document.querySelectorAll("#env-romaneios .env-veiculo")[1].innerText));
+    await page.waitForFunction(() => /1\/1 × |0\/1 × /.test(document.querySelectorAll("#env-romaneios .env-veiculo:not(.env-limbo)")[1].innerText));
     await page.uncheck("#env-detalhada");
     await page.waitForSelector("#env-romaneios .env-card");
     console.log("ok - envio salvo: vista detalhada com arrastar (mover_item) e volta ao resumo");
@@ -296,6 +302,19 @@ const servidor = http.createServer((req, res) => {
     const rLanca2 = S.roms.find(r => r.itens.some(i => i.codigo === "C051001621111"));
     await page.locator("#env-romaneios .env-card").nth(rLanca2.numero - 1).click();
     await page.waitForSelector("#env-romaneio:not([hidden])");
+    // Limbo: tira a LANÇA 2 da carreta sem destino e traz de volta pelo quadro "Itens não apropriados…"
+    assert.ok(await page.isHidden("#env-limbo"));
+    const cardL2 = page.locator("#env-rom-itens .eq-item", { hasText: "LANÇA 2" });
+    await cardL2.locator(".env-mover select").selectOption("limbo");
+    await cardL2.locator(".env-mover button").click();
+    await page.waitForSelector("#env-limbo:not([hidden])");
+    assert.match(await page.locator("#env-limbo").innerText(), /Itens não apropriados a carreta alguma:[\s\S]*1 × LANÇA 2/);
+    assert.strictEqual(S.paraLimbo, 1);
+    assert.strictEqual(S.roms.find(r => r.numero === 0).itens.find(i => i.codigo === "C051001621111").qtd, 1);
+    await page.click("#env-limbo >> text=Trazer para esta carreta");
+    await page.waitForSelector("#env-limbo", { state: "hidden" });
+    assert.strictEqual(S.roms.find(r => r.id === rLanca2.id).itens.find(i => i.codigo === "C051001621111").qtd, 1);
+    console.log("ok - limbo: mover para nenhuma carreta, quadro na tela da carreta e trazer de volta");
     const ler = async (c9, id) => { await page.fill("#env-c9", c9); await page.fill("#env-id", id); await page.click("#env-btn-registrar");
       await page.waitForFunction(() => !/Conferindo/.test(document.getElementById("env-leitura-msg").textContent)); };
     await ler("222", "2");

@@ -1,3 +1,5 @@
+// v6.4.0 - Limbo (carreta 0): peça tirada de uma carreta sem destino; "→ nenhuma carreta (limbo)" no Mover, quadro
+//          "Itens não apropriados a carreta alguma" na tela da carreta (Trazer para esta carreta), alvo na vista detalhada
 // v6.3.0 - Arrastar peças entre veículos (mouse e toque; "Mover para…"): na prévia recalcula comprimento/peso e
 //          avisa excesso, "+ Veículo vazio"; no envio salvo, "Vista detalhada" com as peças e arrastar (mover_item)
 // v6.2.2 - "+ Novo envio" abre o formulário em branco (não traz cliente/endereço do envio anterior)
@@ -64,7 +66,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.3.0";
+const APP_VERSION = "v6.4.0";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2842,6 +2844,7 @@ async function carregarEnvios() {
     card.appendChild(eqEl("div", "", `${e.validos ?? e.romaneios} veículo(s) · peças ${e.lidas}/${e.previstas}`));
     const resumo = Object.keys(ROM_STATUS).filter(k => (e.por_status || {})[k]).map(k => `${e.por_status[k]} ${ROM_STATUS[k].toLowerCase()}`).join(" · ");
     if (resumo) card.appendChild(eqEl("div", "env-sub", "Romaneios: " + resumo));
+    if (e.no_limbo) card.appendChild(eqEl("div", "eq-aviso", `${e.no_limbo} peça(s) no limbo (sem carreta)`));
     card.appendChild(eqEl("div", "env-sub", `${ENVIO_STATUS[e.status] || e.status} · criado por ${e.criado_por} em ${new Date(e.criado_em).toLocaleDateString("pt-BR")}`));
     card.addEventListener("click", () => abrirEnvioDetalhe(e.id));
     box.appendChild(card);
@@ -3194,6 +3197,14 @@ async function abrirEnvioDetalhe(id) {
   envEl("env-btn-excluir-envio").hidden = !envPode("expedicao") || e.status === "excluido";
   if (detalhada) { renderEnvioDetalhado(j); }
   else j.romaneios.forEach(r => {
+    if (r.numero === 0) {   // limbo: só aparece se tem peça
+      if (r.status === "excluido" || !r.previstas) return;
+      const lb = eqEl("div", "env-card env-limbo");
+      lb.appendChild(eqEl("div", "eq-item-titulo", `Sem carreta (limbo) · ${r.previstas} peça(s)`));
+      lb.appendChild(eqEl("div", "env-sub", "Peças tiradas de uma carreta e ainda sem destino. Use a vista detalhada ou a tela da carreta para alocá-las."));
+      box.prepend(lb);
+      return;
+    }
     const card = eqEl("button", "env-card env-st-" + r.status);
     card.type = "button";
     card.appendChild(eqEl("div", "eq-item-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"}`));
@@ -3212,27 +3223,37 @@ async function abrirEnvioDetalhe(id) {
 function renderEnvioDetalhado(j) {
   const box = envEl("env-romaneios");
   const podeMover = envPode("operacional", "expedicao");
-  const abertos = j.romaneios.filter(r => ROM_EM_CARGA.includes(r.status));
-  j.romaneios.forEach(r => {
+  // Limbo (carreta 0): sempre aparece como alvo; se ainda não existe, a função cria ao mover
+  const roms = j.romaneios.filter(r => r.numero !== 0 || r.status !== "excluido");
+  if (!roms.some(r => r.numero === 0)) roms.unshift({ id: "limbo", numero: 0, status: "planejado", previstas: 0, lidas: 0, itens: [] });
+  const abertos = roms.filter(r => ROM_EM_CARGA.includes(r.status));
+  const rotuloDest = o => o.numero === 0 ? "→ nenhuma carreta (limbo)" : `→ romaneio ${o.numero}${o.veiculo ? " (" + o.veiculo + ")" : ""}`;
+  roms.forEach(r => {
+    const limbo = r.numero === 0;
     const emCarga = ROM_EM_CARGA.includes(r.status);
-    const card = eqEl("div", "eq-item env-veiculo env-st-" + r.status);
+    const card = eqEl("div", "eq-item env-veiculo env-st-" + r.status + (limbo ? " env-limbo" : ""));
     if (emCarga) card.dataset.alvo = String(r.id);
-    const tit = eqEl("button", "env-card-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"} · ${ROM_STATUS[r.status] || r.status}`);
-    tit.type = "button";
-    tit.addEventListener("click", () => abrirRomaneio(r.id));
-    card.appendChild(tit);
-    card.appendChild(eqEl("div", "env-sub", `peças ${r.lidas}/${r.previstas} · ${fmtNum(r.comp_m, 2)} m · ${fmtNum(r.peso_kg, 0)} kg`));
-    const destinos = abertos.filter(o => o.id !== r.id).map(o => ({ valor: o.id, rotulo: `→ romaneio ${o.numero}${o.veiculo ? " (" + o.veiculo + ")" : ""}` }));
+    if (limbo) {
+      card.appendChild(eqEl("div", "eq-item-titulo", "Sem carreta (limbo)"));
+      card.appendChild(eqEl("div", "env-sub", "Peças que saíram de uma carreta e ainda não têm destino."));
+    } else {
+      const tit = eqEl("button", "env-card-titulo", `Romaneio ${r.numero} · ${r.veiculo || "veículo a definir"} · ${ROM_STATUS[r.status] || r.status}`);
+      tit.type = "button";
+      tit.addEventListener("click", () => abrirRomaneio(r.id));
+      card.appendChild(tit);
+      card.appendChild(eqEl("div", "env-sub", `peças ${r.lidas}/${r.previstas} · ${fmtNum(r.comp_m, 2)} m · ${fmtNum(r.peso_kg, 0)} kg`));
+    }
+    const destinos = abertos.filter(o => o.id !== r.id).map(o => ({ valor: o.id, rotulo: rotuloDest(o) }));
     (r.itens || []).forEach(x => {
       const livres = emCarga && podeMover ? Math.max(0, x.qtd - x.lidos) : 0;
       const texto = `${x.lidos}/${x.qtd} × ${x.descricao || x.codigo_exibicao}${x.forro ? " (forro)" : ""}${x.filha ? " (junto do pai)" : ""}`;
       card.appendChild(linhaPecaMovel(texto, livres, destinos, async (para, n) => {
-        const k = await romPost("mover_item", { de: r.id, para: Number(para), codigo: x.codigo, qtd: n });
+        const k = await romPost("mover_item", { de: r.id, para: para === "limbo" ? "limbo" : Number(para), codigo: x.codigo, qtd: n });
         envStatus(k.ok ? `${n} × ${x.descricao || x.codigo_exibicao} movida(s).` : "Não movida: " + k.error);
         abrirEnvioDetalhe(ENV.envioId);
       }, x.lidos >= x.qtd ? "env-peca-ok" : ""));
     });
-    if (!(r.itens || []).length) card.appendChild(eqEl("div", "env-sub", "Sem peças."));
+    if (!(r.itens || []).length) card.appendChild(eqEl("div", "env-sub", limbo ? "Vazio: arraste para cá a peça que não deve ficar na carreta." : "Sem peças."));
     box.appendChild(card);
   });
   if (podeMover) box.prepend(eqEl("p", "secao-info", "Segure ⠿ e arraste a peça para outro romaneio (planejado/iniciado). Só o que ainda não foi lido se move."));
@@ -3251,6 +3272,33 @@ async function abrirRomaneio(id) {
   envEl("env-leitura").hidden = true;
   envEl("env-just").value = "";
   await recarregarRomaneio();
+}
+
+// Quadro do limbo na tela da carreta: peças do envio sem carreta, com "Trazer para esta carreta"
+function renderLimboRomaneio(j, soLeitura) {
+  const box = envEl("env-limbo"); if (!box) return;
+  box.replaceChildren();
+  const itens = (j.limbo && j.limbo.itens) || [];
+  box.hidden = !itens.length;
+  if (!itens.length) return;
+  box.appendChild(eqEl("p", "env-limbo-titulo", "Itens não apropriados a carreta alguma:"));
+  const ul = document.createElement("ul");
+  itens.forEach(x => {
+    const li = eqEl("li", "", `${x.qtd} × ${x.descricao || x.codigo_exibicao}`);
+    if (!soLeitura) {
+      const b = eqEl("button", "env-mini", "Trazer para esta carreta"); b.type = "button";
+      b.addEventListener("click", async () => {
+        const n = x.qtd > 1 ? Number(prompt(`Quantas trazer? (até ${x.qtd})`, "1")) : 1;
+        if (!(n > 0)) return;
+        const k = await romPost("mover_item", { de: j.limbo.id, para: j.romaneio.id, codigo: x.codigo, qtd: Math.min(n, x.qtd) });
+        envStatus(k.ok ? `${Math.min(n, x.qtd)} × ${x.descricao || x.codigo_exibicao} trazida(s) do limbo.` : "Não movida: " + k.error);
+        recarregarRomaneio();
+      });
+      li.appendChild(b);
+    }
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
 }
 
 async function recarregarRomaneio() {
@@ -3280,15 +3328,16 @@ async function recarregarRomaneio() {
       (i.comp_m != null ? ` · ${fmtNum(i.comp_m, 2)} m` : "") + (i.peso_kg != null ? ` · ${fmtNum(i.peso_kg, 0)} kg` : "")));
     const livres = i.qtd - i.lidos;
     const destinos = j.outros.filter(o => !ROM_FECHADO.includes(o.status));
-    if (!fechado && livres > 0 && destinos.length && podeConferir) {
+    if (!fechado && livres > 0 && podeConferir) {
       const mv = eqEl("div", "env-mover");
       const q = document.createElement("input"); q.type = "number"; q.min = "1"; q.max = String(livres); q.value = "1"; q.className = "env-qtd";
       const dest = document.createElement("select");
       destinos.forEach(o => envOpcao(dest, o.id, `→ romaneio ${o.numero}${o.veiculo ? " (" + o.veiculo + ")" : ""}`));
+      envOpcao(dest, "limbo", "→ nenhuma carreta (limbo)");
       const b = eqEl("button", "", "Mover"); b.type = "button";
       b.addEventListener("click", async () => {
-        const k = await romPost("mover_item", { de: r.id, para: Number(dest.value), codigo: i.codigo, qtd: Number(q.value) });
-        envStatus(k.ok ? "Peça movida." : "Não movida: " + k.error);
+        const k = await romPost("mover_item", { de: r.id, para: dest.value === "limbo" ? "limbo" : Number(dest.value), codigo: i.codigo, qtd: Number(q.value) });
+        envStatus(k.ok ? (dest.value === "limbo" ? "Peça foi para o limbo (sem carreta)." : "Peça movida.") : "Não movida: " + k.error);
         recarregarRomaneio();
       });
       mv.append(q, dest, b);
@@ -3296,6 +3345,8 @@ async function recarregarRomaneio() {
     }
     box.appendChild(card);
   });
+
+  renderLimboRomaneio(j, fechado || !podeConferir);
 
   // Fotos
   const fotos = envEl("env-fotos"); fotos.replaceChildren();

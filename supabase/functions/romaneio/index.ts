@@ -1,3 +1,5 @@
+// romaneio v1.5 - carreta 0 = limbo do envio (peças tiradas de uma carreta sem destino ainda): mover_item para "limbo",
+//                  romaneio devolve as peças do limbo; o limbo não se lê, fotografa nem confirma; envio não conclui com peças nele
 // romaneio v1.4 - prévia devolve peso/comprimento por peça (arrastar entre veículos); envio com detalhe=true traz as peças de cada romaneio
 // romaneio v1.3 - motorista pelo CPF (único; duplicidade recusada), celulares; transportadora com contato e e-mail da NF
 // romaneio v1.2 - status planejado/iniciado/conferido/aguardando_nota/concluido/sinistrado/excluido; excluir envio
@@ -11,7 +13,7 @@ import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import { montarLista, distribuirVeiculos, chaveCodigo } from "../_shared/configurador.mjs";
 
-const VERSION = "romaneio-v1.4";
+const VERSION = "romaneio-v1.5";
 const TZ = "America/Sao_Paulo";
 const BUCKET = "romaneios";
 const ORIGENS = [/^https:\/\/frossipena\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -146,12 +148,29 @@ async function romaneioAberto(tx: Tx, id: number) {
   if (!EM_CARGA.includes(r.status)) throw new Recusa(`romaneio ${r.numero} está ${ROTULO[r.status] || r.status}`);
   return r;
 }
+// Carreta 0 = limbo: peças fora de qualquer veículo até alguém decidir onde vão. Criada na primeira vez.
+async function limboDoEnvio(tx: Tx, envioId: number) {
+  const [l] = await tx`select id, status from estoque.romaneios where envio_id = ${envioId} and numero = 0 for update`;
+  if (l) {
+    if (l.status !== "planejado") await tx`update estoque.romaneios set status = 'planejado', status_motivo = null where id = ${l.id}`;
+    return l.id as number;
+  }
+  const [n] = await tx`insert into estoque.romaneios ${tx({ envio_id: envioId, numero: 0, veiculo: null })} returning id`;
+  return n.id as number;
+}
+function naoLimbo(r: Record<string, unknown>) {
+  if (Number(r.numero) === 0) throw new Recusa("o limbo (carreta 0) não é veículo: mova as peças para uma carreta");
+}
+const nomeRom = (n: number) => Number(n) === 0 ? "limbo (sem carreta)" : `romaneio ${n}`;
+
 // Envio: concluído quando todos os romaneios (fora os excluídos) estão concluídos/sinistrados; excluído se todos excluídos
 async function atualizarEnvio(tx: Tx, envioId: number) {
-  const rs = await tx`select status from estoque.romaneios where envio_id = ${envioId}`;
-  const validos = rs.filter(r => r.status !== "excluido");
-  const status = !validos.length && rs.length ? "excluido"
-    : validos.length && validos.every(r => ["concluido", "sinistrado"].includes(r.status)) ? "concluido" : "aberto";
+  const rs = await tx`select r.status, r.numero, (select coalesce(sum(i.qtd), 0)::int from estoque.romaneio_itens i
+                       where i.romaneio_id = r.id) as qtd from estoque.romaneios r where r.envio_id = ${envioId}`;
+  const validos = rs.filter(r => r.status !== "excluido" && r.numero !== 0);
+  const limboCheio = rs.some(r => r.numero === 0 && r.status !== "excluido" && r.qtd > 0);
+  const status = !validos.length && rs.some(r => r.numero !== 0) ? "excluido"
+    : !limboCheio && validos.length && validos.every(r => ["concluido", "sinistrado"].includes(r.status)) ? "concluido" : "aberto";
   await tx`update estoque.envios set status = ${status} where id = ${envioId}`;
   return status;
 }
@@ -275,14 +294,16 @@ const MODOS: Record<string, Modo> = {
     const todos = p.todos === true;
     const rows = await tx`
       select e.id, e.cliente, e.obra, e.gt, e.modelo, e.status, e.criado_em, e.criado_por,
-             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id) as romaneios,
-             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status <> 'excluido') as validos,
+             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.numero <> 0) as romaneios,
+             (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.numero <> 0 and r.status <> 'excluido') as validos,
+             (select coalesce(sum(i.qtd), 0)::int from estoque.romaneio_itens i join estoque.romaneios r on r.id = i.romaneio_id
+               where r.envio_id = e.id and r.numero = 0 and r.status <> 'excluido') as no_limbo,
              (select count(*)::int from estoque.romaneios r where r.envio_id = e.id and r.status in ('conferido','aguardando_nota','concluido')) as confirmados,
              (select coalesce(sum(i.qtd), 0)::int from estoque.romaneio_itens i join estoque.romaneios r on r.id = i.romaneio_id
                where r.envio_id = e.id and r.status <> 'excluido') as previstas,
              (select count(*)::int from estoque.romaneio_leituras l where l.envio_id = e.id) as lidas,
              (select coalesce(json_object_agg(x.status, x.n), '{}'::json) from
-               (select r.status, count(*)::int n from estoque.romaneios r where r.envio_id = e.id group by r.status) x) as por_status
+               (select r.status, count(*)::int n from estoque.romaneios r where r.envio_id = e.id and r.numero <> 0 group by r.status) x) as por_status
       from estoque.envios e where ${todos} or e.status = 'aberto' order by e.cliente, e.gt, e.criado_em desc`;
     return { envios: rows };
   },
@@ -338,16 +359,22 @@ const MODOS: Record<string, Modo> = {
       fotos.push({ id: f.id, usuario: f.usuario, url: data?.signedUrl || "" });
     }
     const outros = await tx`select id, numero, veiculo, status from estoque.romaneios
-                            where envio_id = ${r.envio_id} and id <> ${id} order by numero`;
+                            where envio_id = ${r.envio_id} and id <> ${id} and numero <> 0 order by numero`;
+    // Limbo do envio: peças tiradas de alguma carreta e ainda sem destino
+    const [lb] = await tx`select id, status from estoque.romaneios where envio_id = ${r.envio_id} and numero = 0 and id <> ${id}`;
+    const limbo = { id: lb && lb.status !== "excluido" ? lb.id : null, itens: [] as unknown[] };
+    if (limbo.id) limbo.itens = (await tx`select codigo, codigo_exibicao, descricao, qtd, forro, filha from estoque.romaneio_itens
+                                           where romaneio_id = ${limbo.id} and qtd > 0 order by id`).map(i => ({ ...i, qtd: Number(i.qtd) }));
     const historico = await tx`select acao, usuario, detalhe, to_char(criado_em at time zone ${TZ}, 'DD/MM HH24:MI') as quando
                                from estoque.romaneio_log where romaneio_id = ${id} order by id desc limit 50`;
-    return { romaneio: r, itens, leituras, fotos, outros, historico };
+    return { romaneio: r, itens, leituras, fotos, outros, limbo, historico };
   },
 
   // Conferência: código 9 + ID (QR ou digitado)
   async ler_peca(tx, p, c) {
     exigir(c, "operacional", "expedicao");
     const r = await romaneioAberto(tx, int(p.romaneio_id));
+    naoLimbo(r);
     const c9 = normCod(p.codigo9), id = normCod(p.id_individual);
     if (!c9 || !id) throw new Recusa("informe código 9 e ID");
     const [dup] = await tx`select l.romaneio_id, x.numero from estoque.romaneio_leituras l join estoque.romaneios x on x.id = l.romaneio_id
@@ -379,7 +406,8 @@ const MODOS: Record<string, Modo> = {
       const comSaldo = outros.find(o => Number(o.qtd) > o.lidos);
       if (comSaldo) {
         if (p.mover !== true) {
-          throw new Recusa(`peça prevista no romaneio ${comSaldo.numero}`, { outroRomaneio: comSaldo.numero, pedeMover: true, descricao: comSaldo.descricao });
+          throw new Recusa(comSaldo.numero === 0 ? "peça está no limbo (sem carreta)" : `peça prevista no romaneio ${comSaldo.numero}`,
+            { outroRomaneio: comSaldo.numero, limbo: comSaldo.numero === 0, pedeMover: true, descricao: comSaldo.descricao });
         }
         await somarItem(tx, comSaldo.romaneio_id, comSaldo.codigo, -1, comSaldo, "movido");
         await somarItem(tx, r.id, comSaldo.codigo, 1, comSaldo, "movido");
@@ -417,7 +445,9 @@ const MODOS: Record<string, Modo> = {
 
   async mover_item(tx, p, c) {
     exigir(c, "operacional", "expedicao");
-    const de = await romaneioAberto(tx, int(p.de)), para = await romaneioAberto(tx, int(p.para));
+    const de = await romaneioAberto(tx, int(p.de));
+    const para = await romaneioAberto(tx, txt(p.para) === "limbo" ? await limboDoEnvio(tx, de.envio_id) : int(p.para));
+    if (de.id === para.id) throw new Recusa("origem e destino são o mesmo");
     if (de.envio_id !== para.envio_id) throw new Recusa("os romaneios são de envios diferentes");
     const codigo = txt(p.codigo), qtd = Number(p.qtd) || 0;
     const [it] = await tx`select * from estoque.romaneio_itens where romaneio_id = ${de.id} and codigo = ${codigo}`;
@@ -426,14 +456,16 @@ const MODOS: Record<string, Modo> = {
     if (qtd <= 0 || qtd > Number(it.qtd) - lidos) throw new Recusa(`dá para mover até ${Number(it.qtd) - lidos} (o que já foi lido fica)`);
     await somarItem(tx, de.id, codigo, -qtd, it, "movido");
     await somarItem(tx, para.id, codigo, qtd, it, "movido");
-    await log(tx, c, "item movido", de.envio_id, de.id, { codigo, qtd, para: para.numero });
-    await log(tx, c, "item recebido", de.envio_id, para.id, { codigo, qtd, de: de.numero });
-    return {};
+    await log(tx, c, "item movido", de.envio_id, de.id, { codigo, qtd, para: nomeRom(para.numero) });
+    await log(tx, c, "item recebido", de.envio_id, para.id, { codigo, qtd, de: nomeRom(de.numero) });
+    await atualizarEnvio(tx, de.envio_id);
+    return { para: para.id, paraNumero: para.numero };
   },
 
   async editar_romaneio(tx, p, c) {
     exigir(c, "operacional", "expedicao");
     const r = await romaneioAberto(tx, int(p.id));
+    naoLimbo(r);
     const campos = ["transportadora", "motorista", "cpf_motorista", "placa_cavalo", "placa_carreta1", "placa_carreta2",
                     "nota_fiscal", "responsavel", "obs"];
     const d: Record<string, unknown> = {};
@@ -476,6 +508,7 @@ const MODOS: Record<string, Modo> = {
   async foto_upload(tx, p, c) {
     exigir(c, "operacional", "expedicao");
     const r = await romaneioAberto(tx, int(p.romaneio_id));
+    naoLimbo(r);
     const caminho = `${r.envio_id}/${r.id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.jpg`;
     const { data, error } = await storage.from(BUCKET).createSignedUploadUrl(caminho);
     if (error || !data) throw new Error("storage: " + (error?.message || "sem URL"));
@@ -495,6 +528,7 @@ const MODOS: Record<string, Modo> = {
   async confirmar(tx, p, c) {
     exigir(c, "operacional", "expedicao");
     const r = await romaneioAberto(tx, int(p.id));
+    naoLimbo(r);
     const lidos = await lidosPorCodigo(tx, r.id);
     const itens = await tx`select codigo, codigo_exibicao, descricao, qtd from estoque.romaneio_itens where romaneio_id = ${r.id}`;
     const faltas = itens.filter(i => (lidos[i.codigo] || 0) < Number(i.qtd))
@@ -536,6 +570,7 @@ const MODOS: Record<string, Modo> = {
   async sinistrar(tx, p, c) {
     exigir(c, "expedicao");
     const r = await romaneioPorId(tx, int(p.id));
+    naoLimbo(r);
     if (r.status === "excluido") throw new Recusa("romaneio excluído");
     const motivo = txt(p.motivo);
     if (!motivo) throw new Recusa("descreva o sinistro");
