@@ -1,3 +1,4 @@
+// v6.2.2 - "+ Novo envio" abre o formulário em branco (não traz cliente/endereço do envio anterior)
 // v6.2.1 - Confirmar romaneio: lista do que falta abaixo do botão; recusa da regra não pinta o sinal de ERRO
 // v6.2.0 - Motorista pelo CPF (primeiro campo, máscara, sugestões, sem duplicidade), celulares; transportadora com
 //          contato operacional e e-mail da NF (CT-e); romaneio: CPF puxa o motorista
@@ -61,7 +62,7 @@
 //        - Registrar (novo item): se quiser foto -> sempre slot=1 (não pergunta)
 //        - Observações (obs-input) grava na coluna M (OBS) via log_mov
 
-const APP_VERSION = "v6.2.1";
+const APP_VERSION = "v6.2.2";
 
 const ENDPOINT_CONSULTA =
   "https://script.google.com/a/macros/realguindastes.com/s/AKfycbxE5uwmWek7HDPlBh1cD52HPDsIREptl31j-BTt2wXWaoj2KxOYQiVXmHMAP0PiDjeT/exec";
@@ -2852,6 +2853,9 @@ function novoEnvio() {
   envEl("env-previa").hidden = true;
   const dl = envEl("env-clientes"); dl.replaceChildren();
   envClientes().forEach(c => envOpcao(dl, c.rotulo));
+  // Formulário sempre em branco: nada do envio anterior (cliente, endereço, obra nova, telescopagem)
+  ["env-cliente", "env-endereco", "env-nova-obra-nome", "env-nova-obra-endereco"].forEach(id => { envEl(id).value = ""; });
+  envEl("env-telesc").value = "nao";
   envEl("env-nova-obra").hidden = true;
   envPreencherObras();
   const gt = envEl("env-gt"); gt.replaceChildren();

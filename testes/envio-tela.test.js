@@ -221,6 +221,15 @@ const servidor = http.createServer((req, res) => {
     assert.match(await texto("#env-det-titulo"), /S11D – GT-10/);
     assert.strictEqual(await page.locator("#env-romaneios .env-card").count(), nVeic);
     assert.strictEqual(S.ultimoEnvio.obra, "Mina Norte"); assert.strictEqual(S.ultimoEnvio.cliente_id, 2);
+    // "+ Novo envio" de novo: formulário em branco (não traz o endereço do envio anterior)
+    await page.click("#env-detalhe .env-voltar");
+    await page.waitForSelector("#env-lista:not([hidden])");
+    await page.click("#env-btn-novo");
+    assert.strictEqual(await page.inputValue("#env-cliente"), "");
+    assert.strictEqual(await page.inputValue("#env-endereco"), "", "endereço não vem do envio anterior");
+    assert.ok(await page.isHidden("#env-previa"));
+    await page.evaluate(() => abrirEnvioDetalhe(1));
+    await page.waitForSelector("#env-detalhe:not([hidden])");
     console.log(`ok - novo envio: cliente com endereço, GT → modelo, prévia (${nVeic} veículos), redistribuir, salvar`);
 
     // C) Romaneio com a LANÇA 2 (romaneio 2 ou 3) e leituras
